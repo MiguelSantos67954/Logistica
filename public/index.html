@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal Logística</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ================= HOME ================= -->
+  <div id="view-home" class="view-section">
+    <header class="app-header">
+      <div class="brand">
+        <div class="amt-logo" aria-label="AMT Produtos Elétricos">
+          <span class="amt-symbol"></span>
+          <span class="amt-name">AMT<small>PRODUTOS ELÉTRICOS</small></span>
+        </div>
+        <span class="brand-divider"></span>
+        <div>
+          <h1>Portal Logística</h1>
+          <span class="brand-sub">GESTÃO DE OPERAÇÕES LOGÍSTICAS</span>
+        </div>
+      </div>
+      <div class="status-bar">
+        <span class="status-indicator"></span>
+        <span id="statusTexto">Carregando status...</span>
+        <button id="btnAtualizarErp" class="btn-refresh">🔄 Atualizar dados do ERP</button>
+      </div>
+    </header>
+
+    <main class="home-container">
+      <section class="portal-intro">
+        <span class="portal-eyebrow">PORTAL DE LOGÍSTICA AMT</span>
+        <h2>Painel de Módulos e Gestão</h2>
+        <p>Selecione um dos módulos abaixo para acessar os controles operacionais da logística.</p>
+      </section>
+      <div class="modules-grid">
+        <div class="module-card" data-modulo="identificacao-pallets">
+          <div class="module-card-top"><div class="module-icon">🏷️</div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
+          <h3>Identificação de Pallets</h3>
+          <p>Emissão de packing lists para pallets de fios, painéis corrugados e kits.</p>
+          <button class="btn-enter" data-abrir="identificacao-pallets">Abrir módulo →</button>
+        </div>
+        <div class="module-card" data-modulo="relacao-carga">
+          <div class="module-card-top"><div class="module-icon">📋</div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
+          <h3>Relação de Carga</h3>
+          <p>Visualize o estoque de produtos acabados e selecione os pallets que serão carregados.</p>
+          <button class="btn-enter" data-abrir="relacao-carga">Montar relação →</button>
+        </div>
+        <div class="module-card" data-modulo="romaneio">
+          <div class="module-card-top"><div class="module-icon">🚛</div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
+          <h3>Romaneio</h3>
+          <p>Informe os packing lists, gere o romaneio e dê baixa automática nos pallets expedidos.</p>
+          <button class="btn-enter" data-abrir="romaneio">Gerar romaneio →</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= IDENTIFICACAO DE PALLETS ================= -->
+  <div id="view-identificacao" class="view-section" style="display:none">
+    <header class="app-header">
+      <div class="brand">
+        <button id="btnVoltarIdentificacao" class="btn-back">← Portal Logística</button>
+        <div>
+          <h1>Identificação de Pallets</h1>
+          <span class="brand-sub">Material Acabado — Packing List</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="home-container">
+      <section class="portal-intro compact">
+        <span class="portal-eyebrow">MÓDULO OPERACIONAL</span>
+        <h2>Identificação de Pallets</h2>
+        <p>Escolha o tipo de material ou acesse as ferramentas de apoio do módulo.</p>
+      </section>
+      <div class="ident-main-grid">
+        <div class="module-card ident-card-principal" data-modulo="fios">
+          <div class="module-icon">🧵</div>
+          <h3>Fios</h3>
+          <p>Identificação de pallets de fios/condutores. Preencha apenas OP e Qtde — o resto vem do ERP.</p>
+          <button class="btn-enter" data-abrir="fios">Abrir módulo Fios →</button>
+        </div>
+
+        <div class="module-card ident-card-principal" data-modulo="painel">
+          <div class="module-icon">📦</div>
+          <h3>Painel / Kits</h3>
+          <p>Identificação de pallets de painéis corrugados e kits.</p>
+          <button class="btn-enter" data-abrir="painel">Abrir módulo Painel/Kits →</button>
+        </div>
+      </div>
+
+      <div class="ident-tools-grid" aria-label="Ferramentas de apoio">
+        <div class="module-card secondary ident-card-apoio" data-modulo="historico">
+          <div class="module-icon">📚</div>
+          <h3>Histórico</h3>
+          <p>Consulta de todos os pallets já identificados (equivalente à aba "Base").</p>
+          <button class="btn-enter" data-abrir="historico">Ver histórico →</button>
+        </div>
+
+        <div class="module-card secondary ident-card-apoio" data-modulo="config">
+          <div class="module-icon">⚙️</div>
+          <h3>Configurações</h3>
+          <p>Medidas de palete (peso de tara) e abreviação de clientes usada no nome do PDF.</p>
+          <button class="btn-enter" data-abrir="config">Configurações →</button>
+        </div>
+
+        <div class="module-card secondary ident-card-apoio" data-modulo="dados-erp">
+          <div class="module-icon">🗃️</div>
+          <h3>Dados do ERP</h3>
+          <p>Consulte e edite localmente as linhas de OP carregadas do TOTVS.</p>
+          <button class="btn-enter" data-abrir="dados-erp">Ver linhas →</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= RELACAO DE CARGA ================= -->
+  <div id="view-relacao-carga" class="view-section" style="display:none">
+    <header class="app-header"><div class="brand">
+      <button id="btnVoltarRelacaoCarga" class="btn-back">← Portal Logística</button>
+      <div><h1>Relação de Carga</h1><span class="brand-sub">PLANEJAMENTO DA EXPEDIÇÃO</span></div>
+    </div></header>
+    <main class="modulo-container">
+      <div class="cards">
+        <div class="card"><span class="card-label">Pallets disponíveis</span><span class="card-valor" id="estoqueQuantidade">0</span></div>
+        <div class="card"><span class="card-label">Selecionados</span><span class="card-valor" id="cargaSelecionados">0</span></div>
+        <div class="card"><span class="card-label">Peso bruto selecionado</span><span class="card-valor" id="cargaPesoBruto">0,00 kg</span></div>
+      </div>
+      <section class="aba">
+        <h2>Dados da carga</h2>
+        <div class="form-grid">
+          <label>Cliente<input id="cargaCliente" placeholder="Cliente da carga" /></label>
+          <label>Transportadora<input id="cargaTransportadora" placeholder="Transportadora" /></label>
+          <label>Veículo / placa<input id="cargaVeiculo" placeholder="Veículo ou placa" /></label>
+          <label>Motorista<input id="cargaMotorista" placeholder="Nome do motorista" /></label>
+          <label>Prioridade<select id="cargaPrioridade"><option>Normal</option><option>Alta</option><option>Baixa</option></select></label>
+        </div>
+      </section>
+      <section class="aba">
+        <div class="form-linha"><h2>Itens adicionados manualmente</h2><button id="btnAdicionarItemCarga" type="button" class="btn-clear">＋ Adicionar item</button></div>
+        <div class="table-container"><table id="tabelaItensManuaisCarga"><thead><tr><th>Código</th><th>Descrição</th><th>Quantidade</th><th>Observação</th><th></th></tr></thead><tbody><tr class="linha-vazia"><td colspan="5">Nenhum item manual adicionado.</td></tr></tbody></table></div>
+      </section>
+      <div class="filtros"><input id="buscaEstoque" placeholder="Buscar packing list, cliente, produto ou OP..." /><span class="contador">Estoque de produtos acabados</span></div>
+      <div class="table-container"><table id="tabelaEstoque"><thead><tr><th><input id="selecionarTodosEstoque" type="checkbox" /></th><th>Packing List</th><th>Data</th><th>Cliente</th><th>Módulo</th><th>Produtos / OPs</th><th>Volumes</th><th>Peso Líq.</th><th>Peso Bruto</th></tr></thead><tbody></tbody></table></div>
+      <div class="acoes-modulo"><button id="btnSalvarRelacao" class="btn-primary">💾 Salvar Relação de Carga</button></div>
+      <section class="aba bloco-historico-cargas">
+        <h2>Relações de carga salvas</h2>
+        <div class="table-container"><table id="tabelaHistoricoCargas"><thead><tr><th>Número</th><th>Data</th><th>Cliente</th><th>Transportadora</th><th>Veículo</th><th>Pallets</th><th>Peso bruto</th><th>Imprimir</th><th>Excluir</th></tr></thead><tbody></tbody></table></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= ROMANEIO ================= -->
+  <div id="view-romaneio" class="view-section" style="display:none">
+    <header class="app-header"><div class="brand">
+      <button id="btnVoltarRomaneio" class="btn-back">← Portal Logística</button>
+      <div><h1>Romaneio</h1><span class="brand-sub">EXPEDIÇÃO E BAIXA DO ESTOQUE</span></div>
+    </div></header>
+    <main class="modulo-container">
+      <div class="aviso-info">Informe os números dos packing lists. Ao gerar o romaneio, os pallets serão marcados como expedidos e deixarão de aparecer no estoque de produtos acabados.</div>
+      <div class="cards">
+        <div class="card highlight-card"><span class="card-label">Aderência à relação</span><span class="card-valor" id="romaneioAderencia">—</span></div>
+        <div class="card"><span class="card-label">Cliente</span><span class="card-valor card-valor-menor" id="romaneioCliente">—</span></div>
+        <div class="card"><span class="card-label">Pallets</span><span class="card-valor" id="romaneioQtdPallets">0</span></div>
+        <div class="card"><span class="card-label">Volumes</span><span class="card-valor" id="romaneioVolumes">0</span></div>
+        <div class="card"><span class="card-label">Peso líquido</span><span class="card-valor" id="romaneioPesoLiquido">0,00 kg</span></div>
+        <div class="card highlight-card"><span class="card-label">Peso bruto</span><span class="card-valor" id="romaneioPesoBruto">0,00 kg</span></div>
+      </div>
+      <section class="aba">
+        <h2>Dados do transporte</h2>
+        <div class="form-grid">
+          <label>Relação de carga *<select id="romaneioCarga"><option value="">Selecione uma relação</option></select></label>
+          <label>Data de envio<input id="romaneioDataEnvio" type="date" /></label>
+          <label>Transportadora<input id="romaneioTransportadora" placeholder="Transportadora" /></label>
+          <label>Veículo / placa<input id="romaneioVeiculo" placeholder="Veículo ou placa" /></label>
+          <label>Motorista<input id="romaneioMotorista" placeholder="Nome do motorista" /></label>
+          <label>Tipo de frete<select id="romaneioFrete"><option value="CIF">CIF</option><option value="FOB">FOB</option><option value="SEM FRETE">Sem frete</option></select></label>
+        </div>
+        <label class="campo-bloco">Números dos packing lists<textarea id="romaneioNumeros" rows="5" placeholder="Ex.: 1025, 1026, 1027 (separe por vírgula, espaço ou linha)"></textarea></label>
+        <div class="form-linha">
+          <button id="btnConferirRomaneio" type="button" class="btn-clear">Conferir packing lists</button>
+          <button id="btnGerarRomaneio" type="button" class="btn-primary">🚛 Gerar Romaneio e Dar Baixa</button>
+          <span id="romaneioAviso" class="aviso-erro" style="display:none"></span>
+        </div>
+        <label class="campo-bloco">Observações<textarea id="romaneioObservacao" rows="3" placeholder="Observações da expedição"></textarea></label>
+      </section>
+      <section class="aba">
+        <h2>Prévia dos itens</h2>
+        <div class="table-container"><table id="tabelaPreviewRomaneio"><thead><tr><th>Packing</th><th>Tipo</th><th>Código</th><th>Descrição</th><th>OP</th><th>OC</th><th>NCM</th><th>Qtde</th></tr></thead><tbody><tr><td colspan="8">Informe os packing lists e clique em Conferir.</td></tr></tbody></table></div>
+      </section>
+      <section class="aba bloco-historico-romaneio">
+        <h2>Romaneios emitidos</h2>
+        <div class="table-container"><table id="tabelaHistoricoRomaneios"><thead><tr><th>Número</th><th>Relação</th><th>Aderência</th><th>Data</th><th>Cliente</th><th>Frete</th><th>Transportadora</th><th>Pallets</th><th>Peso bruto</th><th>PDF</th><th>Excluir</th></tr></thead><tbody></tbody></table></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= DADOS DO ERP ================= -->
+  <div id="view-dados-erp" class="view-section" style="display:none">
+    <header class="app-header">
+      <div class="brand">
+        <button id="btnVoltarDadosErp" class="btn-back">← Identificação de Pallets</button>
+        <div><h1>Dados do ERP</h1><span class="brand-sub">Linhas locais usadas no preenchimento das OPs</span></div>
+      </div>
+    </header>
+    <main class="modulo-container">
+      <div class="aviso-info">As edições são salvas no cache local. O botão “Atualizar dados do ERP” substitui esses ajustes pelos dados atuais do TOTVS.</div>
+      <div class="filtros">
+        <input id="buscaDadosErp" placeholder="Buscar OP, OC, pedido, produto, descrição ou cliente..." />
+        <select id="filtroModuloDadosErp">
+          <option value="">Módulo (todos)</option>
+          <option value="fios">Fios</option>
+          <option value="painel">Painel/Kits</option>
+        </select>
+        <span id="contadorDadosErp" class="contador"></span>
+      </div>
+      <div class="table-container">
+        <table id="tabelaDadosErp" class="tabela-edicao-erp">
+          <thead><tr><th>Módulo</th><th>OP</th><th>OC</th><th>Pedido</th><th>Produto</th><th>Descrição</th><th>Cliente</th><th>Tipo</th><th>Ação</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= MODULO (FIOS / PAINEL) ================= -->
+  <div id="view-modulo" class="view-section" style="display:none">
+    <header class="app-header">
+      <div class="brand">
+        <button id="btnVoltarModulo" class="btn-back">← Identificação de Pallets</button>
+        <div>
+          <h1 id="moduloTitulo">Fios</h1>
+          <span class="brand-sub" id="moduloSub">Packing List</span>
+        </div>
+      </div>
+      <div class="status-bar">
+        <span id="moduloNumero" class="tag-numero">Nº —</span>
+      </div>
+    </header>
+
+    <main class="modulo-container">
+      <div class="cards" id="cardsModulo">
+        <div class="card">
+          <span class="card-label">Cliente detectado</span>
+          <span class="card-valor" id="cardCliente">—</span>
+        </div>
+        <div class="card">
+          <span class="card-label">Carretéis / Volumes</span>
+          <span class="card-valor" id="cardCarreteis">0</span>
+        </div>
+        <div class="card">
+          <span class="card-label">Peso Líquido (kg)</span>
+          <span class="card-valor" id="cardPesoLiquido">0</span>
+        </div>
+        <div class="card highlight-card">
+          <span class="card-label">Peso Bruto (kg)</span>
+          <span class="card-valor" id="cardPesoBruto">0</span>
+        </div>
+      </div>
+
+      <div class="filtros">
+        <label>Medida do palete
+          <select id="selectMedidaPalete"></select>
+        </label>
+        <button id="btnAddLinha" type="button" class="btn-clear">+ Adicionar linha</button>
+        <button id="btnRepetirOp" type="button" class="btn-repeat" title="Cria uma nova linha repetindo a OP mais recente">↳ Repetir última OP</button>
+        <span id="avisoModulo" class="aviso-erro" style="display:none"></span>
+      </div>
+
+      <div class="dica-atalho">Dica: após informar a quantidade, pressione <kbd>Enter</kbd> para repetir a OP na próxima linha.</div>
+
+      <div class="table-container">
+        <table id="tabelaLinhas">
+          <thead>
+            <tr>
+              <th>IT</th>
+              <th style="width:130px">OP</th>
+              <th>OC</th>
+              <th>Pedido</th>
+              <th>Código</th>
+              <th>Descrição</th>
+              <th>Tipo</th>
+              <th style="width:110px">Qtde (kg)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="acoes-modulo">
+        <button id="btnLimpar" type="button" class="btn-clear">🧹 Limpar</button>
+        <button id="btnGravar" type="button" class="btn-primary">💾 Gravar</button>
+        <button id="btnGravarImprimir" type="button" class="btn-primary">🖨️ Gravar e Imprimir</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= HISTORICO ================= -->
+  <div id="view-historico" class="view-section" style="display:none">
+    <header class="app-header">
+      <div class="brand">
+        <button id="btnVoltarHistorico" class="btn-back">← Identificação de Pallets</button>
+        <div><h1>Histórico de Pallets</h1><span class="brand-sub">Base de dados (equivalente à aba "Base")</span></div>
+      </div>
+    </header>
+    <main class="modulo-container">
+      <div class="filtros">
+        <input id="buscaHistorico" placeholder="Buscar por número, cliente, produto..." />
+        <select id="filtroModuloHistorico">
+          <option value="">Módulo (todos)</option>
+          <option value="fios">Fios</option>
+          <option value="painel">Painel/Kits</option>
+        </select>
+        <span id="contadorHistorico" class="contador"></span>
+      </div>
+      <div class="table-container">
+        <table id="tabelaHistorico">
+          <thead>
+            <tr>
+              <th>Nº</th>
+              <th>Módulo</th>
+              <th>Data</th>
+              <th>Cliente</th>
+              <th>Carretéis</th>
+              <th>Peso Líq.</th>
+              <th>Peso Bruto</th>
+              <th>PDF</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= CONFIGURACOES ================= -->
+  <div id="view-config" class="view-section" style="display:none">
+    <header class="app-header">
+      <div class="brand">
+        <button id="btnVoltarConfig" class="btn-back">← Identificação de Pallets</button>
+        <div><h1>Configurações</h1><span class="brand-sub">Paletes e abreviação de clientes</span></div>
+      </div>
+    </header>
+    <main class="modulo-container">
+      <section class="aba">
+        <h2>Medidas de Palete (peso de tara)</h2>
+        <div class="table-container">
+          <table id="tabelaPaletesConfig">
+            <thead><tr><th>Medida</th><th>Peso Tara (kg)</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="form-linha">
+          <input id="novaMedida" placeholder="ex: 1,20 X 1,20" />
+          <input id="novoPesoTara" type="number" step="0.1" placeholder="peso (kg)" />
+          <button id="btnAddPalete" class="btn-primary" type="button">Adicionar / Atualizar</button>
+        </div>
+      </section>
+
+      <section class="aba">
+        <h2>Abreviação de Clientes (usada no nome do PDF)</h2>
+        <div class="table-container">
+          <table id="tabelaAbrevConfig">
+            <thead><tr><th>Código Cliente</th><th>Abreviação</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="form-linha">
+          <input id="novoCodigoCliente" placeholder="código do cliente" />
+          <input id="novaAbrev" placeholder="abreviação" />
+          <button id="btnAddAbrev" class="btn-primary" type="button">Adicionar / Atualizar</button>
+        </div>
+      </section>
+
+      <section class="aba">
+        <h2>Teste de saída do PDF</h2>
+        <p>Gera um packing list com dados padrão para conferir a pasta de saída e a impressão. O teste não é gravado no histórico.</p>
+        <div class="form-linha">
+          <button id="btnGerarPdfTesteFios" class="btn-primary" type="button">🧪 Testar modelo Fios</button>
+          <button id="btnGerarPdfTestePainel" class="btn-primary" type="button">🧪 Testar modelo Painel/Kits</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

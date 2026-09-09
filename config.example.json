@@ -1,0 +1,12 @@
+{
+  "server": "SEU_SERVIDOR",
+  "instanceName": "SUA_INSTANCIA",
+  "database": "SEU_BANCO",
+  "port": null,
+  "auth": "sql",
+  "user": "SEU_USUARIO",
+  "password": "",
+  "encrypt": false,
+  "trustServerCertificate": true,
+  "porta_do_sistema": 5025
+}
