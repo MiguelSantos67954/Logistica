@@ -10,8 +10,28 @@
 </head>
 <body>
 
+  <!-- ================= LOGIN ================= -->
+  <div id="view-login" class="login-view">
+    <form id="formLogin" class="login-card">
+      <div class="login-logo">AMT</div>
+      <span class="portal-eyebrow">PORTAL LOGÍSTICA</span>
+      <h1>Acesse sua conta</h1>
+      <p>Entre com seu usuário e senha para acessar os módulos autorizados.</p>
+      <label>Usuário<input id="loginUsuario" autocomplete="username" required /></label>
+      <label>Senha<input id="loginSenha" type="password" autocomplete="current-password" required /></label>
+      <div id="loginErro" class="aviso-erro" hidden></div>
+      <button class="btn-primary" type="submit">Entrar</button>
+    </form>
+  </div>
+
+  <div id="barraSessao" class="barra-sessao" hidden>
+    <span>👤 <strong id="usuarioAtualNome"></strong></span>
+    <button id="btnAdmin" type="button" hidden>⚙️ Administração</button>
+    <button id="btnSair" type="button">Sair</button>
+  </div>
+
   <!-- ================= HOME ================= -->
-  <div id="view-home" class="view-section">
+  <div id="view-home" class="view-section" style="display:none">
     <header class="app-header">
       <div class="brand">
         <div class="amt-logo" aria-label="AMT Produtos Elétricos">
@@ -55,6 +75,19 @@
           <h3>Romaneio</h3>
           <p>Informe os packing lists, gere o romaneio e dê baixa automática nos pallets expedidos.</p>
           <button class="btn-enter" data-abrir="romaneio">Gerar romaneio →</button>
+        </div>
+        <div class="module-card" data-modulo="programacao-carregamento">
+          <div class="module-card-top"><div class="module-icon">🛻</div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
+          <h3>Programação de Carregamento</h3>
+          <p>Cadastre as cargas e acompanhe o cronograma diário em formato de linha do tempo ou calendário.</p>
+          <span id="carregamentosHoje" class="loading-today-badge" hidden></span>
+          <button class="btn-enter" data-abrir="programacao-carregamento">Acessar programação →</button>
+        </div>
+        <div class="module-card" id="cardAdministracao" data-modulo="administracao" hidden>
+          <div class="module-card-top"><div class="module-icon">🔐</div><span class="module-status">● &nbsp; SOMENTE ADMIN</span></div>
+          <h3>Usuários e Auditoria</h3>
+          <p>Cadastre usuários, defina acessos e consulte o histórico de atividades.</p>
+          <button class="btn-enter" data-abrir="administracao">Administrar usuários →</button>
         </div>
       </div>
     </main>
@@ -386,6 +419,73 @@
           <button id="btnGerarPdfTesteFios" class="btn-primary" type="button">🧪 Testar modelo Fios</button>
           <button id="btnGerarPdfTestePainel" class="btn-primary" type="button">🧪 Testar modelo Painel/Kits</button>
         </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= ADMINISTRACAO ================= -->
+  <div id="view-administracao" class="view-section" style="display:none">
+    <header class="app-header"><div class="brand"><button id="btnVoltarAdmin" class="btn-back">← Portal Logística</button><div><h1>Usuários e Auditoria</h1><span class="brand-sub">ADMINISTRAÇÃO DE ACESSOS</span></div></div></header>
+    <main class="modulo-container admin-container">
+      <nav class="admin-abas"><button class="admin-aba-btn ativo" data-admin-aba="usuarios">👥 Usuários</button><button class="admin-aba-btn" data-admin-aba="auditoria">🕘 Histórico de atividades</button></nav>
+      <section id="admin-aba-usuarios" class="admin-aba aba">
+        <div class="aba-header-title"><h2 id="tituloFormUsuario">Novo usuário</h2><p>Defina os módulos e as ações permitidas na Programação de Carregamento.</p></div>
+        <form id="formUsuario" class="form-usuario">
+          <input type="hidden" id="usuarioId" />
+          <label>Login<input id="usuarioLogin" required /></label><label>Nome<input id="usuarioNome" required /></label>
+          <label>Senha <small id="dicaSenhaUsuario">obrigatória para novo usuário</small><input id="usuarioSenha" type="password" autocomplete="new-password" /></label>
+          <div class="usuario-flags"><label><input id="usuarioAtivo" type="checkbox" checked /> Usuário ativo</label><label><input id="usuarioAdministrador" type="checkbox" /> Administrador</label></div>
+          <fieldset class="permissoes-grid"><legend>Acesso aos módulos</legend>
+            <label><input type="checkbox" data-permissao="identificacao_pallets" /> Identificação de Pallets</label><label><input type="checkbox" data-permissao="relacao_carga" /> Relação de Carga</label><label><input type="checkbox" data-permissao="romaneio" /> Romaneio</label><label><input type="checkbox" data-permissao="programacao_carregamento" /> Programação de Carregamento</label>
+          </fieldset>
+          <fieldset class="permissoes-grid"><legend>Bloqueios da Programação de Carregamento</legend>
+            <label><input type="checkbox" data-permissao="carregamento_criar" /> Adicionar carregamentos</label><label><input type="checkbox" data-permissao="carregamento_editar" /> Editar carregamentos</label><label><input type="checkbox" data-permissao="carregamento_excluir" /> Excluir carregamentos</label>
+          </fieldset>
+          <div class="form-actions"><button class="btn-primary" type="submit">Salvar usuário</button><button id="btnCancelarUsuario" class="btn-clear" type="button" hidden>Cancelar edição</button></div>
+        </form>
+        <div class="table-container tabela-admin"><table id="tabelaUsuarios"><thead><tr><th>Usuário</th><th>Nome</th><th>Perfil</th><th>Status</th><th>Módulos</th><th>Ação</th></tr></thead><tbody></tbody></table></div>
+      </section>
+      <section id="admin-aba-auditoria" class="admin-aba aba" style="display:none">
+        <div class="aba-header-title"><h2>Histórico de atividades</h2><p>Registro das entradas e alterações realizadas no portal.</p></div>
+        <div class="filtros"><input id="filtroUsuarioAuditoria" placeholder="Filtrar por usuário" /><button id="btnFiltrarAuditoria" class="btn-clear" type="button">Filtrar</button></div>
+        <div class="table-container"><table id="tabelaAuditoria"><thead><tr><th>Data/hora</th><th>Usuário</th><th>Ação</th><th>Recurso</th><th>Resultado</th><th>Detalhes</th></tr></thead><tbody></tbody></table></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= PROGRAMACAO DE CARREGAMENTO ================= -->
+  <div id="view-programacao-carregamento" class="view-section" style="display:none">
+    <header class="app-header"><div class="brand">
+      <button id="btnVoltarProgramacao" class="btn-back">← Portal Logística</button>
+      <div><h1>Programação de Carregamento</h1><span class="brand-sub">AGENDA OPERACIONAL DE EXPEDIÇÃO</span></div>
+    </div></header>
+    <nav class="carregamento-abas">
+      <button class="carregamento-aba-btn ativo" data-carregamento-aba="timeline">📊 Cargas do dia</button>
+      <button class="carregamento-aba-btn" data-carregamento-aba="calendario">📅 Calendário</button>
+      <button class="carregamento-aba-btn" data-carregamento-aba="adicionar">➕ Adicionar carregamento</button>
+      <button class="carregamento-aba-btn" data-carregamento-aba="historico">🗂️ Histórico</button>
+    </nav>
+    <main class="modulo-container carregamento-container">
+      <section id="carregamento-aba-timeline" class="carregamento-aba timeline-dashboard">
+        <div class="timeline-dashboard-header"><div><span class="timeline-eyebrow">Visão operacional</span><h2>Linha do tempo de cargas</h2><p>Ontem, hoje e os próximos sete dias.</p></div><label>Data de referência<input type="date" id="timelineData" /></label></div>
+        <div class="timeline-kpis"><article><span>Cargas no período</span><strong id="timelineTotal">0</strong></article><article><span>Clientes atendidos</span><strong id="timelineClientes">0</strong></article><article><span>Próxima carga</span><strong id="timelineProxima">—</strong><small id="timelineProximaInfo">Nenhuma carga pendente</small></article></div>
+        <div class="timeline-panel"><div class="timeline-panel-title"><h3 id="timelineTituloDia">Linha do tempo</h3><span id="timelineRelogio"></span></div><div id="timelineCargas" class="timeline-cargas"></div></div>
+      </section>
+      <section id="carregamento-aba-adicionar" class="carregamento-aba" style="display:none">
+        <div class="aba-header-title"><h2 id="tituloFormularioCarregamento">Novo carregamento</h2><p>Registre a data, horário, caminhão, material e o cliente que receberá a carga.</p></div>
+        <form id="formCarregamento" class="form-carregamento">
+          <input type="hidden" id="carregamentoId" />
+          <label>Data<input type="date" id="carregamentoData" required /></label><label>Horário<input type="time" id="carregamentoHorario" required /></label>
+          <label>Caminhão<input type="text" id="carregamentoCaminhao" placeholder="Ex.: ABC-1D23" required /></label><label>Material a carregar<input type="text" id="carregamentoMaterial" placeholder="Descreva o material" required /></label>
+          <label>Cliente destinatário<input type="text" id="carregamentoCliente" placeholder="Nome do cliente" required /></label><label class="form-full">Observação (opcional)<textarea id="carregamentoObservacao" rows="3"></textarea></label>
+          <div class="form-actions form-full"><button type="submit" class="btn-primary" id="btnSalvarCarregamento">Salvar carregamento</button><button type="button" class="btn-clear" id="btnCancelarEdicao" style="display:none">Cancelar edição</button></div>
+        </form>
+        <div class="lista-carregamentos"><div class="aba-header-title"><h2>Próximos carregamentos</h2></div><div id="listaCarregamentos"></div></div>
+      </section>
+      <section id="carregamento-aba-historico" class="carregamento-aba" style="display:none"><div class="aba-header-title"><h2>Carregamentos antigos</h2><p>Consulte ou apague carregamentos com data anterior a hoje.</p></div><div id="listaCarregamentosAntigos" class="lista-carregamentos"></div></section>
+      <section id="carregamento-aba-calendario" class="carregamento-aba" style="display:none">
+        <div class="calendar-toolbar"><button type="button" class="btn-clear" id="btnMesAnterior">←</button><h2 id="tituloCalendario"></h2><button type="button" class="btn-clear" id="btnMesProximo">→</button><button type="button" class="btn-primary" id="btnHojeCalendario">Hoje</button></div>
+        <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div><div id="gradeCalendario" class="calendar-grid"></div><p class="calendar-legend">Clique em um carregamento para editar.</p>
       </section>
     </main>
   </div>

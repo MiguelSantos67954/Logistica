@@ -1,10 +1,12 @@
 import os
 import json
+import secrets
 from io import BytesIO
 from src.fotos import ler_uploads, salvar_fotos, fotos_pdf
 from datetime import datetime
 
-from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask import Flask, request, jsonify, send_from_directory, send_file, session, g
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 
 from paths import base_dir
@@ -18,6 +20,223 @@ from src.relacao_carga import gerar_pdf_relacao_carga
 app = Flask(__name__, static_folder=os.path.join(base_dir(), 'public'), static_url_path='')
 CORS(app, supports_credentials=True)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
+with get_connection() as _conn:
+    _segredo = _conn.execute("SELECT valor FROM meta WHERE chave='chave_sessao'").fetchone()
+    if not _segredo:
+        _valor_segredo = secrets.token_hex(32)
+        _conn.execute("INSERT INTO meta (chave, valor) VALUES ('chave_sessao', ?)", (_valor_segredo,))
+    else:
+        _valor_segredo = _segredo['valor']
+app.secret_key = os.environ.get('PORTAL_LOGISTICA_SECRET') or _valor_segredo
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
+
+PERMISSOES_PADRAO = {
+    'identificacao_pallets': False, 'relacao_carga': False, 'romaneio': False,
+    'programacao_carregamento': False, 'carregamento_criar': False,
+    'carregamento_editar': False, 'carregamento_excluir': False,
+}
+
+
+def _permissoes_usuario(row):
+    try:
+        permissoes = json.loads(row['permissoes_json'] or '{}')
+    except (TypeError, ValueError):
+        permissoes = {}
+    return {**PERMISSOES_PADRAO, **permissoes}
+
+
+def _registrar_auditoria(acao, detalhes='', status_http=None, usuario=None, usuario_id=None):
+    nome = usuario or session.get('usuario_login') or 'Anônimo'
+    uid = usuario_id if usuario_id is not None else session.get('usuario_id')
+    try:
+        with get_connection() as conn:
+            conn.execute('''INSERT INTO auditoria
+                (usuario_id, usuario, acao, metodo, caminho, detalhes, status_http)
+                VALUES (?, ?, ?, ?, ?, ?, ?)''', (
+                    uid, nome, acao, request.method, request.path,
+                    str(detalhes or '')[:2000], status_http
+                ))
+    except Exception:
+        app.logger.exception('Falha ao registrar auditoria')
+
+
+def _permissao_da_requisicao():
+    path, metodo = request.path, request.method
+    if path.startswith('/api/admin/'):
+        return 'administrador'
+    if path.startswith('/api/carregamentos'):
+        if metodo == 'POST': return 'carregamento_criar'
+        if metodo == 'PUT': return 'carregamento_editar'
+        if metodo == 'DELETE': return 'carregamento_excluir'
+        return 'programacao_carregamento'
+    if path.startswith('/api/romaneios'):
+        return 'romaneio'
+    if path.startswith('/api/cargas'):
+        return 'relacao_carga' if metodo != 'GET' else 'relacao_ou_romaneio'
+    if path.startswith('/api/estoque-pallets') or path.startswith('/api/produtos/por-codigo'):
+        return 'relacao_carga'
+    if path.startswith('/api/') and path not in ('/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/atividade', '/api/status'):
+        return 'identificacao_pallets'
+    return None
+
+
+@app.before_request
+def autenticar_requisicao():
+    if not request.path.startswith('/api/') or request.path == '/api/auth/login':
+        return None
+    usuario_id = session.get('usuario_id')
+    if not usuario_id:
+        return jsonify({'erro': 'Faça login para continuar.', 'loginNecessario': True}), 401
+    with get_connection() as conn:
+        usuario = conn.execute('SELECT * FROM usuarios WHERE id=? AND ativo=1', (usuario_id,)).fetchone()
+    if not usuario:
+        session.clear()
+        return jsonify({'erro': 'Sua sessão não é mais válida.', 'loginNecessario': True}), 401
+    g.usuario = usuario
+    g.permissoes = _permissoes_usuario(usuario)
+    permissao = _permissao_da_requisicao()
+    autorizado = (
+        not permissao or bool(usuario['administrador']) or
+        (permissao == 'relacao_ou_romaneio' and (g.permissoes['relacao_carga'] or g.permissoes['romaneio'])) or
+        (permissao in ('carregamento_criar', 'carregamento_editar', 'carregamento_excluir')
+         and g.permissoes['programacao_carregamento'] and bool(g.permissoes.get(permissao))) or
+        (permissao not in ('carregamento_criar', 'carregamento_editar', 'carregamento_excluir', 'relacao_ou_romaneio')
+         and bool(g.permissoes.get(permissao)))
+    )
+    if not autorizado:
+        return jsonify({'erro': 'Você não tem permissão para realizar esta ação.'}), 403
+    return None
+
+
+@app.after_request
+def auditar_alteracoes(response):
+    if (request.path.startswith('/api/') and request.method in ('POST', 'PUT', 'DELETE')
+            and request.path not in ('/api/auth/login', '/api/auth/logout', '/api/auth/atividade') and session.get('usuario_id')):
+        dados = request.get_json(silent=True) if request.is_json else None
+        if isinstance(dados, dict):
+            dados = {k: ('***' if 'senha' in k.lower() else v) for k, v in dados.items()}
+        _registrar_auditoria(request.endpoint or request.path, json.dumps(dados, ensure_ascii=False) if dados else '', response.status_code)
+    return response
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def api_login():
+    dados = request.get_json(silent=True) or {}
+    login = str(dados.get('login') or '').strip()
+    with get_connection() as conn:
+        usuario = conn.execute('SELECT * FROM usuarios WHERE login=? COLLATE NOCASE AND ativo=1', (login,)).fetchone()
+    if not usuario or not check_password_hash(usuario['senha_hash'], str(dados.get('senha') or '')):
+        _registrar_auditoria('login_falhou', f'Login informado: {login}', 401, login or 'Anônimo')
+        return jsonify({'erro': 'Usuário ou senha inválidos.'}), 401
+    session.clear()
+    session['usuario_id'] = usuario['id']
+    session['usuario_login'] = usuario['login']
+    _registrar_auditoria('login', 'Entrada no Portal Logística', 200)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def api_logout():
+    _registrar_auditoria('logout', 'Saída do Portal Logística', 200)
+    session.clear()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/auth/atividade', methods=['POST'])
+def api_registrar_atividade():
+    modulo = str((request.get_json(silent=True) or {}).get('modulo') or '').strip()
+    _registrar_auditoria('acessou_modulo', modulo, 200)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/auth/me', methods=['GET'])
+def api_usuario_atual():
+    return jsonify({
+        'id': g.usuario['id'], 'login': g.usuario['login'], 'nome': g.usuario['nome'],
+        'administrador': bool(g.usuario['administrador']), 'permissoes': g.permissoes,
+    })
+
+
+@app.route('/api/admin/usuarios', methods=['GET', 'POST'])
+def api_admin_usuarios():
+    if request.method == 'GET':
+        with get_connection() as conn:
+            rows = conn.execute('''SELECT id, login, nome, administrador, ativo,
+                permissoes_json, criado_em, atualizado_em FROM usuarios ORDER BY nome, login''').fetchall()
+        return jsonify([{
+            **{k: row[k] for k in ('id', 'login', 'nome', 'criado_em', 'atualizado_em')},
+            'administrador': bool(row['administrador']), 'ativo': bool(row['ativo']),
+            'permissoes': _permissoes_usuario(row),
+        } for row in rows])
+
+    dados = request.get_json(silent=True) or {}
+    login, nome, senha = (str(dados.get(k) or '').strip() for k in ('login', 'nome', 'senha'))
+    if not login or not nome or not senha:
+        return jsonify({'erro': 'Informe login, nome e senha.'}), 400
+    permissoes = {k: bool((dados.get('permissoes') or {}).get(k)) for k in PERMISSOES_PADRAO}
+    try:
+        with get_connection() as conn:
+            cursor = conn.execute('''INSERT INTO usuarios
+                (login, nome, senha_hash, administrador, ativo, permissoes_json)
+                VALUES (?, ?, ?, ?, ?, ?)''', (
+                    login, nome, generate_password_hash(senha), bool(dados.get('administrador')),
+                    bool(dados.get('ativo', True)), json.dumps(permissoes, ensure_ascii=False)
+                ))
+        return jsonify({'ok': True, 'id': cursor.lastrowid}), 201
+    except Exception as err:
+        if 'UNIQUE' in str(err).upper():
+            return jsonify({'erro': 'Já existe um usuário com esse login.'}), 409
+        raise
+
+
+@app.route('/api/admin/usuarios/<int:usuario_id>', methods=['PUT'])
+def api_admin_usuario_editar(usuario_id):
+    dados = request.get_json(silent=True) or {}
+    login, nome = str(dados.get('login') or '').strip(), str(dados.get('nome') or '').strip()
+    if not login or not nome:
+        return jsonify({'erro': 'Informe login e nome.'}), 400
+    with get_connection() as conn:
+        atual = conn.execute('SELECT * FROM usuarios WHERE id=?', (usuario_id,)).fetchone()
+        if not atual:
+            return jsonify({'erro': 'Usuário não encontrado.'}), 404
+        administrador, ativo = bool(dados.get('administrador')), bool(dados.get('ativo'))
+        if atual['login'].lower() == 'admin' and (not administrador or not ativo):
+            return jsonify({'erro': 'O administrador principal não pode ser desativado nem perder o perfil administrativo.'}), 400
+        permissoes = {k: bool((dados.get('permissoes') or {}).get(k)) for k in PERMISSOES_PADRAO}
+        parametros = [login, nome, administrador, ativo, json.dumps(permissoes, ensure_ascii=False)]
+        senha = str(dados.get('senha') or '')
+        sql = '''UPDATE usuarios SET login=?, nome=?, administrador=?, ativo=?,
+            permissoes_json=?, atualizado_em=CURRENT_TIMESTAMP'''
+        if senha:
+            sql += ', senha_hash=?'
+            parametros.append(generate_password_hash(senha))
+        sql += ' WHERE id=?'
+        parametros.append(usuario_id)
+        try:
+            conn.execute(sql, parametros)
+        except Exception as err:
+            if 'UNIQUE' in str(err).upper():
+                return jsonify({'erro': 'Já existe um usuário com esse login.'}), 409
+            raise
+    if usuario_id == session.get('usuario_id'):
+        session['usuario_login'] = login
+    return jsonify({'ok': True})
+
+
+@app.route('/api/admin/auditoria', methods=['GET'])
+def api_admin_auditoria():
+    usuario = request.args.get('usuario', '').strip()
+    limite = min(max(int(request.args.get('limite', 300)), 1), 1000)
+    params, where = [], ''
+    if usuario:
+        where = ' WHERE usuario LIKE ?'
+        params.append(f'%{usuario}%')
+    params.append(limite)
+    with get_connection() as conn:
+        rows = conn.execute(f'''SELECT id, usuario, data_hora, acao, metodo, caminho,
+            detalhes, status_http FROM auditoria{where} ORDER BY id DESC LIMIT ?''', params).fetchall()
+    return jsonify([dict(row) for row in rows])
 
 
 @app.errorhandler(413)
@@ -84,13 +303,91 @@ def api_status():
         n_ordens = cur.fetchone()['n']
         cur.execute("SELECT COUNT(*) AS n FROM pallets;")
         n_pallets = cur.fetchone()['n']
+        hoje = datetime.now().strftime('%Y-%m-%d')
+        cur.execute("SELECT COUNT(*) AS n FROM programacao_carregamentos WHERE data_carregamento = ?;", (hoje,))
+        n_carregamentos_hoje = cur.fetchone()['n']
         return jsonify({
             'ultimaAtualizacao': row['valor'] if row else None,
             'ordensEmCache': n_ordens,
             'paletesGravados': n_pallets,
+            'carregamentosHoje': n_carregamentos_hoje,
         })
     finally:
         conn.close()
+
+
+# ---------- Programação de carregamentos ----------
+def validar_carregamento(data):
+    campos = {
+        'data_carregamento': 'data', 'horario': 'horário', 'caminhao': 'caminhão',
+        'material': 'material', 'cliente': 'cliente'
+    }
+    for campo, rotulo in campos.items():
+        if not str(data.get(campo) or '').strip():
+            return f'Informe {rotulo}.'
+    return None
+
+
+@app.route('/api/carregamentos', methods=['GET'])
+def api_carregamentos_list():
+    inicio = request.args.get('inicio', '').strip()
+    fim = request.args.get('fim', '').strip()
+    query = 'SELECT * FROM programacao_carregamentos'
+    filtros, params = [], []
+    if inicio:
+        filtros.append('data_carregamento >= ?')
+        params.append(inicio)
+    if fim:
+        filtros.append('data_carregamento <= ?')
+        params.append(fim)
+    if filtros:
+        query += ' WHERE ' + ' AND '.join(filtros)
+    query += ' ORDER BY data_carregamento, horario, id'
+    with get_connection() as conn:
+        return jsonify([dict(row) for row in conn.execute(query, params).fetchall()])
+
+
+@app.route('/api/carregamentos', methods=['POST'])
+def api_carregamentos_create():
+    data = request.get_json() or {}
+    erro = validar_carregamento(data)
+    if erro:
+        return jsonify({'ok': False, 'erro': erro}), 400
+    with get_connection() as conn:
+        cursor = conn.execute('''INSERT INTO programacao_carregamentos
+            (data_carregamento, horario, caminhao, material, cliente, observacao)
+            VALUES (?, ?, ?, ?, ?, ?)''', (
+                data['data_carregamento'].strip(), data['horario'].strip(), data['caminhao'].strip(),
+                data['material'].strip(), data['cliente'].strip(), (data.get('observacao') or '').strip()
+            ))
+        return jsonify({'ok': True, 'id': cursor.lastrowid}), 201
+
+
+@app.route('/api/carregamentos/<int:carregamento_id>', methods=['PUT'])
+def api_carregamentos_update(carregamento_id):
+    data = request.get_json() or {}
+    erro = validar_carregamento(data)
+    if erro:
+        return jsonify({'ok': False, 'erro': erro}), 400
+    with get_connection() as conn:
+        cursor = conn.execute('''UPDATE programacao_carregamentos SET
+            data_carregamento=?, horario=?, caminhao=?, material=?, cliente=?, observacao=? WHERE id=?''', (
+                data['data_carregamento'].strip(), data['horario'].strip(), data['caminhao'].strip(),
+                data['material'].strip(), data['cliente'].strip(), (data.get('observacao') or '').strip(),
+                carregamento_id
+            ))
+        if not cursor.rowcount:
+            return jsonify({'ok': False, 'erro': 'Carregamento não encontrado.'}), 404
+        return jsonify({'ok': True})
+
+
+@app.route('/api/carregamentos/<int:carregamento_id>', methods=['DELETE'])
+def api_carregamentos_delete(carregamento_id):
+    with get_connection() as conn:
+        cursor = conn.execute('DELETE FROM programacao_carregamentos WHERE id = ?', (carregamento_id,))
+        if not cursor.rowcount:
+            return jsonify({'ok': False, 'erro': 'Carregamento não encontrado.'}), 404
+        return jsonify({'ok': True})
 
 
 @app.route('/api/refresh', methods=['POST'])

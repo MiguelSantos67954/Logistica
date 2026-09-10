@@ -1,7 +1,24 @@
 # Portal Logística
 
 O portal reúne os módulos da logística. Atualmente inclui o módulo
-**Identificação de Pallets**, com os fluxos de Fios e Painel/Kits.
+**Identificação de Pallets**, com os fluxos de Fios e Painel/Kits, além de
+**Relação de Carga**, **Romaneio** e **Programação de Carregamento**.
+
+O módulo Programação de Carregamento foi adaptado do Portal PCP e inclui linha
+do tempo operacional, calendário mensal, cadastro/edição e histórico de cargas.
+Os registros ficam no banco local do próprio Portal Logística.
+
+## Acesso, permissões e auditoria
+
+O portal exige login. O administrador inicial é `Admin`; sua senha inicial é a
+definida na instalação. No módulo **Usuários e Auditoria**, administradores podem
+cadastrar usuários, redefinir senhas, ativar/bloquear contas e liberar cada módulo.
+Na Programação de Carregamento, as permissões de adicionar, editar e excluir são
+independentes. Entradas, saídas e alterações nas APIs ficam registradas no histórico.
+
+Em produção, também é possível definir `PORTAL_LOGISTICA_SECRET` no ambiente para
+usar uma chave de sessão administrada pela infraestrutura; sem ela, o sistema gera
+e guarda automaticamente uma chave local no banco.
 
 Recriação em Flask (Python + HTML/CSS/JS) da planilha `PCP - PACKINGLIST` (abas
 `FIOS_` e `PAINEL_KITS`, macros `MóduloFios` / `MóduloKIT_Painel`). Sistema

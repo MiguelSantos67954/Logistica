@@ -10,11 +10,14 @@ const views = {
   historico: document.getElementById('view-historico'),
   config: document.getElementById('view-config'),
   dadosErp: document.getElementById('view-dados-erp'),
+  programacaoCarregamento: document.getElementById('view-programacao-carregamento'),
+  administracao: document.getElementById('view-administracao'),
 };
 
 let moduloAtual = 'fios'; // 'fios' | 'painel'
 let paletesCache = [];
 let linhaSeq = 0;
+let usuarioAtual = null;
 
 function mostrarView(nome) {
   Object.values(views).forEach(v => (v.style.display = 'none'));
@@ -24,9 +27,12 @@ function mostrarView(nome) {
 document.querySelectorAll('[data-abrir]').forEach(btn => {
   btn.addEventListener('click', () => {
     const alvo = btn.dataset.abrir;
+    fetch('/api/auth/atividade', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({modulo:alvo})}).catch(() => {});
     if (alvo === 'identificacao-pallets') mostrarView('identificacao');
     else if (alvo === 'relacao-carga') abrirRelacaoCarga();
     else if (alvo === 'romaneio') abrirRomaneio();
+    else if (alvo === 'programacao-carregamento') abrirProgramacaoCarregamento();
+    else if (alvo === 'administracao') abrirAdministracao();
     else if (alvo === 'fios' || alvo === 'painel') abrirModulo(alvo);
     else if (alvo === 'historico') abrirHistorico();
     else if (alvo === 'config') abrirConfig();
@@ -41,6 +47,8 @@ document.getElementById('btnVoltarModulo').addEventListener('click', () => mostr
 document.getElementById('btnVoltarHistorico').addEventListener('click', () => mostrarView('identificacao'));
 document.getElementById('btnVoltarConfig').addEventListener('click', () => mostrarView('identificacao'));
 document.getElementById('btnVoltarDadosErp').addEventListener('click', () => mostrarView('identificacao'));
+document.getElementById('btnVoltarProgramacao').addEventListener('click', () => { mostrarView('home'); carregarStatus(); });
+document.getElementById('btnVoltarAdmin').addEventListener('click', () => mostrarView('home'));
 
 // ==========================================
 // STATUS / ATUALIZACAO DO ERP
@@ -52,6 +60,10 @@ async function carregarStatus() {
       ? `Atualizado em ${new Date(s.ultimaAtualizacao).toLocaleString('pt-BR')} — ${s.ordensEmCache} ordens em cache — ${s.paletesGravados} pallets gravados`
       : 'Ainda não sincronizado com o ERP';
     document.getElementById('statusTexto').textContent = txt;
+    const badge = document.getElementById('carregamentosHoje');
+    const totalHoje = Number(s.carregamentosHoje || 0);
+    badge.textContent = `${totalHoje} carregamento${totalHoje === 1 ? '' : 's'} hoje`;
+    badge.hidden = totalHoje === 0;
   } catch (e) {
     document.getElementById('statusTexto').textContent = 'Erro ao consultar status.';
   }
@@ -666,6 +678,127 @@ document.querySelector('#tabelaHistoricoRomaneios tbody').addEventListener('clic
   await Promise.all([carregarHistoricoRomaneios(), carregarRelacoesRomaneio()]);
 });
 
+// ==========================================
+// PROGRAMAÇÃO DE CARREGAMENTO
+// Adaptado do módulo original do Portal PCP.
+// ==========================================
+let mesCalendarioCarga = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let carregamentos = [];
+const cargaISO = data => `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+const cargaData = iso => iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '';
+const cargaHtml = valor => String(valor ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+
+function abrirProgramacaoCarregamento() {
+  mostrarView('programacaoCarregamento');
+  if (!document.getElementById('carregamentoData').value) document.getElementById('carregamentoData').value = cargaISO(new Date());
+  ativarAbaCarregamento('timeline');
+}
+
+function pode(permissao) {
+  return Boolean(usuarioAtual && (usuarioAtual.administrador || usuarioAtual.permissoes?.[permissao]));
+}
+
+function ativarAbaCarregamento(nome) {
+  document.querySelectorAll('.carregamento-aba-btn').forEach(b => b.classList.toggle('ativo', b.dataset.carregamentoAba === nome));
+  document.querySelectorAll('.carregamento-aba').forEach(a => a.style.display = a.id === `carregamento-aba-${nome}` ? 'block' : 'none');
+  if (nome === 'timeline') carregarTimelineCargas();
+  else if (nome === 'calendario') carregarCalendarioCargas();
+  else if (nome === 'historico') carregarCarregamentosAntigos();
+  else carregarListaCarregamentos();
+}
+document.querySelectorAll('.carregamento-aba-btn').forEach(b => b.addEventListener('click', () => ativarAbaCarregamento(b.dataset.carregamentoAba)));
+
+async function buscarCarregamentos(inicio = '', fim = '') {
+  const params = new URLSearchParams();
+  if (inicio) params.set('inicio', inicio);
+  if (fim) params.set('fim', fim);
+  const resposta = await fetch(`/api/carregamentos?${params}`), dados = await resposta.json();
+  if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível carregar os carregamentos.');
+  return dados;
+}
+
+async function carregarTimelineCargas() {
+  const input = document.getElementById('timelineData');
+  if (!input.value) input.value = cargaISO(new Date());
+  const base = new Date(`${input.value}T12:00:00`), inicio = new Date(base), fim = new Date(base);
+  inicio.setDate(inicio.getDate() - 1); fim.setDate(fim.getDate() + 7);
+  const inicioISO = cargaISO(inicio), fimISO = cargaISO(fim), area = document.getElementById('timelineCargas');
+  area.innerHTML = '<div class="empty-state">Carregando programação...</div>';
+  try {
+    carregamentos = (await buscarCarregamentos(inicioISO, fimISO)).sort((a,b) => `${a.data_carregamento} ${a.horario}`.localeCompare(`${b.data_carregamento} ${b.horario}`));
+    const agora = new Date(), hoje = cargaISO(agora), hora = agora.toTimeString().slice(0,5);
+    const proxima = carregamentos.find(c => c.data_carregamento > hoje || (c.data_carregamento === hoje && c.horario >= hora));
+    document.getElementById('timelineTotal').textContent = carregamentos.length;
+    document.getElementById('timelineClientes').textContent = new Set(carregamentos.map(c => c.cliente.trim().toUpperCase())).size;
+    document.getElementById('timelineProxima').textContent = proxima?.horario || '—';
+    document.getElementById('timelineProximaInfo').textContent = proxima ? `${proxima.caminhao} · ${proxima.cliente}` : 'Nenhuma carga pendente';
+    document.getElementById('timelineTituloDia').textContent = `${cargaData(inicioISO)} a ${cargaData(fimISO)}`;
+    document.getElementById('timelineRelogio').textContent = input.value === hoje ? `Agora: ${hora}` : `Referência: ${cargaData(input.value)}`;
+    area.innerHTML = Array.from({length: 9}, (_, i) => { const d = new Date(inicio); d.setDate(d.getDate() + i); return d; }).map(d => {
+      const iso = cargaISO(d), linhas = carregamentos.filter(c => c.data_carregamento === iso);
+      const rotulo = iso === hoje ? 'Hoje' : iso === inicioISO ? 'Ontem' : d.toLocaleDateString('pt-BR', {weekday:'long'});
+      const eventos = linhas.length ? linhas.map(c => {
+        const passou = c.data_carregamento < hoje || (c.data_carregamento === hoje && c.horario < hora);
+        const status = passou ? 'realizada' : (proxima && Number(c.id) === Number(proxima.id) ? 'proxima' : 'programada');
+        return `<article class="timeline-item timeline-${status}" data-editar-carregamento="${c.id}"><div class="timeline-hora"><strong>${cargaHtml(c.horario)}</strong><span>${status === 'realizada' ? 'Horário encerrado' : status === 'proxima' ? 'Próxima carga' : 'Programada'}</span></div><div class="timeline-marker"><i></i></div><div class="timeline-card"><div class="timeline-card-top"><strong>${cargaHtml(c.caminhao)}</strong><span>${cargaHtml(c.cliente)}</span></div><h4>${cargaHtml(c.material)}</h4>${c.observacao ? `<p>${cargaHtml(c.observacao)}</p>` : ''}</div></article>`;
+      }).join('') : '<div class="timeline-day-empty">Nenhuma carga programada</div>';
+      return `<div class="timeline-date-divider ${iso === hoje ? 'timeline-date-today' : ''}"><strong>${cargaHtml(rotulo)}</strong><span>${cargaData(iso)}</span></div>${eventos}`;
+    }).join('');
+  } catch (erro) { area.innerHTML = `<div class="empty-state">${cargaHtml(erro.message)}</div>`; }
+}
+
+function cartaoCarregamento(c, editar = true) {
+  return `<article class="carregamento-item"><div class="carregamento-data"><strong>${cargaData(c.data_carregamento)}</strong><span>${cargaHtml(c.horario)}</span></div><div class="carregamento-info"><strong>${cargaHtml(c.caminhao)}</strong><span>${cargaHtml(c.material)} · ${cargaHtml(c.cliente)}</span>${c.observacao ? `<small>${cargaHtml(c.observacao)}</small>` : ''}</div><div class="carregamento-acoes">${editar && pode('carregamento_editar') ? `<button type="button" class="btn-icon" data-editar-carregamento="${c.id}" title="Editar">✏️</button>` : ''}${pode('carregamento_excluir') ? `<button type="button" class="btn-icon danger" data-excluir-carregamento="${c.id}" title="Excluir">🗑️</button>` : ''}</div></article>`;
+}
+async function carregarListaCarregamentos() {
+  const lista = document.getElementById('listaCarregamentos');
+  try { carregamentos = await buscarCarregamentos(cargaISO(new Date())); lista.innerHTML = carregamentos.length ? carregamentos.map(c => cartaoCarregamento(c)).join('') : '<div class="empty-state">Nenhum carregamento programado a partir de hoje.</div>'; }
+  catch (erro) { lista.innerHTML = `<div class="empty-state">${cargaHtml(erro.message)}</div>`; }
+}
+async function carregarCarregamentosAntigos() {
+  const lista = document.getElementById('listaCarregamentosAntigos'), ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
+  try { carregamentos = (await buscarCarregamentos('', cargaISO(ontem))).reverse(); lista.innerHTML = carregamentos.length ? carregamentos.map(c => cartaoCarregamento(c, false)).join('') : '<div class="empty-state">Nenhum carregamento antigo encontrado.</div>'; }
+  catch (erro) { lista.innerHTML = `<div class="empty-state">${cargaHtml(erro.message)}</div>`; }
+}
+function limparFormularioCarregamento() {
+  document.getElementById('formCarregamento').reset(); document.getElementById('carregamentoId').value = ''; document.getElementById('carregamentoData').value = cargaISO(new Date());
+  document.getElementById('tituloFormularioCarregamento').textContent = 'Novo carregamento'; document.getElementById('btnSalvarCarregamento').textContent = 'Salvar carregamento'; document.getElementById('btnCancelarEdicao').style.display = 'none';
+}
+function editarCarregamento(id) {
+  if (!pode('carregamento_editar')) return alert('Você não tem permissão para editar carregamentos.');
+  const c = carregamentos.find(item => Number(item.id) === Number(id)); if (!c) return;
+  document.getElementById('carregamentoId').value = c.id;
+  for (const [sufixo, chave] of Object.entries({Data:'data_carregamento',Horario:'horario',Caminhao:'caminhao',Material:'material',Cliente:'cliente',Observacao:'observacao'})) document.getElementById(`carregamento${sufixo}`).value = c[chave] || '';
+  document.getElementById('tituloFormularioCarregamento').textContent = 'Editar carregamento'; document.getElementById('btnSalvarCarregamento').textContent = 'Salvar alterações'; document.getElementById('btnCancelarEdicao').style.display = 'inline-block'; ativarAbaCarregamento('adicionar');
+}
+async function excluirCarregamento(id) {
+  if (!pode('carregamento_excluir')) return alert('Você não tem permissão para excluir carregamentos.');
+  if (!confirm('Excluir este carregamento permanentemente?')) return;
+  const resposta = await fetch(`/api/carregamentos/${id}`, {method:'DELETE'}), dados = await resposta.json();
+  if (!resposta.ok) return alert(dados.erro || 'Não foi possível excluir.');
+  ativarAbaCarregamento(document.querySelector('.carregamento-aba-btn.ativo').dataset.carregamentoAba); carregarStatus();
+}
+document.getElementById('formCarregamento').addEventListener('submit', async e => {
+  e.preventDefault(); const id = document.getElementById('carregamentoId').value;
+  if (!pode(id ? 'carregamento_editar' : 'carregamento_criar')) return alert('Você não tem permissão para esta ação.');
+  const dados = {data_carregamento:document.getElementById('carregamentoData').value, horario:document.getElementById('carregamentoHorario').value, caminhao:document.getElementById('carregamentoCaminhao').value.trim(), material:document.getElementById('carregamentoMaterial').value.trim(), cliente:document.getElementById('carregamentoCliente').value.trim(), observacao:document.getElementById('carregamentoObservacao').value.trim()};
+  try { const resposta = await fetch(id ? `/api/carregamentos/${id}` : '/api/carregamentos', {method:id?'PUT':'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(dados)}), resultado = await resposta.json(); if (!resposta.ok) throw new Error(resultado.erro || 'Não foi possível salvar.'); limparFormularioCarregamento(); await carregarListaCarregamentos(); carregarStatus(); }
+  catch (erro) { alert(erro.message); }
+});
+document.getElementById('btnCancelarEdicao').addEventListener('click', limparFormularioCarregamento);
+for (const id of ['listaCarregamentos','listaCarregamentosAntigos','timelineCargas','gradeCalendario']) document.getElementById(id).addEventListener('click', e => { const editar = e.target.closest('[data-editar-carregamento]'), excluir = e.target.closest('[data-excluir-carregamento]'); if (editar) editarCarregamento(editar.dataset.editarCarregamento); if (excluir) excluirCarregamento(excluir.dataset.excluirCarregamento); });
+document.getElementById('timelineData').addEventListener('change', carregarTimelineCargas);
+
+async function carregarCalendarioCargas() {
+  const primeiro = new Date(mesCalendarioCarga.getFullYear(), mesCalendarioCarga.getMonth(), 1), ultimo = new Date(mesCalendarioCarga.getFullYear(), mesCalendarioCarga.getMonth() + 1, 0);
+  document.getElementById('tituloCalendario').textContent = primeiro.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+  try { carregamentos = await buscarCarregamentos(cargaISO(primeiro), cargaISO(ultimo)); const dias = Array.from({length:primeiro.getDay()}, () => '<div class="calendar-day calendar-day-empty"></div>'); for (let dia=1; dia<=ultimo.getDate(); dia++) { const iso = cargaISO(new Date(primeiro.getFullYear(), primeiro.getMonth(), dia)), eventos = carregamentos.filter(c => c.data_carregamento === iso); dias.push(`<div class="calendar-day ${iso === cargaISO(new Date()) ? 'calendar-today' : ''}"><span class="calendar-date">${dia}</span><div class="calendar-events">${eventos.map(c => `<button class="calendar-event" data-editar-carregamento="${c.id}"><strong>${cargaHtml(c.horario)} · ${cargaHtml(c.caminhao)}</strong><span>${cargaHtml(c.material)}</span><small>${cargaHtml(c.cliente)}</small></button>`).join('')}</div></div>`); } document.getElementById('gradeCalendario').innerHTML = dias.join(''); }
+  catch (erro) { document.getElementById('gradeCalendario').innerHTML = `<div class="empty-state">${cargaHtml(erro.message)}</div>`; }
+}
+document.getElementById('btnMesAnterior').addEventListener('click', () => { mesCalendarioCarga = new Date(mesCalendarioCarga.getFullYear(), mesCalendarioCarga.getMonth()-1, 1); carregarCalendarioCargas(); });
+document.getElementById('btnMesProximo').addEventListener('click', () => { mesCalendarioCarga = new Date(mesCalendarioCarga.getFullYear(), mesCalendarioCarga.getMonth()+1, 1); carregarCalendarioCargas(); });
+document.getElementById('btnHojeCalendario').addEventListener('click', () => { mesCalendarioCarga = new Date(new Date().getFullYear(), new Date().getMonth(), 1); carregarCalendarioCargas(); });
+
 document.getElementById('romaneioNumeros').addEventListener('input', limparPreviewRomaneio);
 document.getElementById('romaneioCarga').addEventListener('change', limparPreviewRomaneio);
 document.getElementById('btnConferirRomaneio').addEventListener('click', conferirRomaneio);
@@ -921,7 +1054,107 @@ document.getElementById('btnGerarPdfTestePainel').addEventListener('click', () =
 // ==========================================
 // INICIALIZACAO
 // ==========================================
-carregarStatus();
+function aplicarPermissoes() {
+  const modulos = {
+    'identificacao-pallets': 'identificacao_pallets',
+    'relacao-carga': 'relacao_carga', romaneio: 'romaneio',
+    'programacao-carregamento': 'programacao_carregamento',
+  };
+  for (const [modulo, permissao] of Object.entries(modulos)) {
+    const card = document.querySelector(`[data-modulo="${modulo}"]`);
+    if (card) card.hidden = !pode(permissao);
+  }
+  document.getElementById('cardAdministracao').hidden = !usuarioAtual.administrador;
+  document.getElementById('btnAdmin').hidden = !usuarioAtual.administrador;
+  document.querySelector('[data-carregamento-aba="adicionar"]').hidden = !(pode('carregamento_criar') || pode('carregamento_editar'));
+}
+
+function mostrarLogin() {
+  usuarioAtual = null;
+  Object.values(views).forEach(v => v.style.display = 'none');
+  document.getElementById('barraSessao').hidden = true;
+  document.getElementById('view-login').style.display = 'grid';
+  document.getElementById('loginSenha').value = '';
+  document.getElementById('loginUsuario').focus();
+}
+
+async function inicializarSessao() {
+  try {
+    const resposta = await fetch('/api/auth/me');
+    if (!resposta.ok) return mostrarLogin();
+    usuarioAtual = await resposta.json();
+    document.getElementById('view-login').style.display = 'none';
+    document.getElementById('barraSessao').hidden = false;
+    document.getElementById('usuarioAtualNome').textContent = usuarioAtual.nome;
+    aplicarPermissoes(); mostrarView('home'); carregarStatus();
+  } catch (_) { mostrarLogin(); }
+}
+
+document.getElementById('formLogin').addEventListener('submit', async e => {
+  e.preventDefault();
+  const erro = document.getElementById('loginErro'); erro.hidden = true;
+  const botao = e.currentTarget.querySelector('button[type="submit"]'); botao.disabled = true;
+  try {
+    const resposta = await fetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login:document.getElementById('loginUsuario').value.trim(), senha:document.getElementById('loginSenha').value})});
+    const dados = await resposta.json(); if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível entrar.'); await inicializarSessao();
+  } catch (e) { erro.textContent = e.message; erro.hidden = false; }
+  finally { botao.disabled = false; }
+});
+document.getElementById('btnSair').addEventListener('click', async () => { await fetch('/api/auth/logout', {method:'POST'}); mostrarLogin(); });
+document.getElementById('btnAdmin').addEventListener('click', abrirAdministracao);
+
+let usuariosAdmin = [];
+function abrirAdministracao() {
+  if (!usuarioAtual?.administrador) return alert('Acesso exclusivo para administradores.');
+  mostrarView('administracao'); ativarAbaAdmin('usuarios');
+}
+function ativarAbaAdmin(nome) {
+  document.querySelectorAll('.admin-aba-btn').forEach(b => b.classList.toggle('ativo', b.dataset.adminAba === nome));
+  document.querySelectorAll('.admin-aba').forEach(a => a.style.display = a.id === `admin-aba-${nome}` ? 'block' : 'none');
+  if (nome === 'usuarios') carregarUsuariosAdmin(); else carregarAuditoria();
+}
+document.querySelectorAll('.admin-aba-btn').forEach(b => b.addEventListener('click', () => ativarAbaAdmin(b.dataset.adminAba)));
+
+async function carregarUsuariosAdmin() {
+  const resposta = await fetch('/api/admin/usuarios'), dados = await resposta.json();
+  if (!resposta.ok) return alert(dados.erro || 'Não foi possível carregar os usuários.');
+  usuariosAdmin = dados;
+  const rotulos = {identificacao_pallets:'Pallets', relacao_carga:'Relação', romaneio:'Romaneio', programacao_carregamento:'Programação'};
+  document.querySelector('#tabelaUsuarios tbody').innerHTML = dados.map(u => `<tr><td><strong>${cargaHtml(u.login)}</strong></td><td>${cargaHtml(u.nome)}</td><td>${u.administrador ? '<span class="tag-admin">Administrador</span>' : 'Usuário'}</td><td>${u.ativo ? '<span class="tag-ativo">Ativo</span>' : '<span class="tag-inativo">Bloqueado</span>'}</td><td>${u.administrador ? 'Todos' : Object.entries(rotulos).filter(([k]) => u.permissoes[k]).map(([,v]) => v).join(', ') || 'Nenhum'}</td><td><button class="btn-clear" data-editar-usuario="${u.id}">Editar</button></td></tr>`).join('');
+}
+function limparFormUsuario() {
+  document.getElementById('formUsuario').reset(); document.getElementById('usuarioId').value = ''; document.getElementById('usuarioAtivo').checked = true;
+  document.getElementById('tituloFormUsuario').textContent = 'Novo usuário'; document.getElementById('dicaSenhaUsuario').textContent = 'obrigatória para novo usuário'; document.getElementById('btnCancelarUsuario').hidden = true;
+}
+document.querySelector('#tabelaUsuarios tbody').addEventListener('click', e => {
+  const btn = e.target.closest('[data-editar-usuario]'); if (!btn) return;
+  const u = usuariosAdmin.find(x => Number(x.id) === Number(btn.dataset.editarUsuario)); if (!u) return;
+  document.getElementById('usuarioId').value = u.id; document.getElementById('usuarioLogin').value = u.login; document.getElementById('usuarioNome').value = u.nome; document.getElementById('usuarioSenha').value = '';
+  document.getElementById('usuarioAtivo').checked = u.ativo; document.getElementById('usuarioAdministrador').checked = u.administrador;
+  document.querySelectorAll('[data-permissao]').forEach(c => c.checked = Boolean(u.permissoes[c.dataset.permissao]));
+  document.getElementById('tituloFormUsuario').textContent = `Editar ${u.nome}`; document.getElementById('dicaSenhaUsuario').textContent = 'deixe em branco para manter'; document.getElementById('btnCancelarUsuario').hidden = false; document.getElementById('formUsuario').scrollIntoView({behavior:'smooth'});
+});
+document.getElementById('btnCancelarUsuario').addEventListener('click', limparFormUsuario);
+document.getElementById('formUsuario').addEventListener('submit', async e => {
+  e.preventDefault(); const id = document.getElementById('usuarioId').value;
+  const permissoes = {}; document.querySelectorAll('[data-permissao]').forEach(c => permissoes[c.dataset.permissao] = c.checked);
+  const dados = {login:document.getElementById('usuarioLogin').value.trim(), nome:document.getElementById('usuarioNome').value.trim(), senha:document.getElementById('usuarioSenha').value, ativo:document.getElementById('usuarioAtivo').checked, administrador:document.getElementById('usuarioAdministrador').checked, permissoes};
+  if (!id && !dados.senha) return alert('Informe a senha do novo usuário.');
+  const resposta = await fetch(id ? `/api/admin/usuarios/${id}` : '/api/admin/usuarios', {method:id?'PUT':'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(dados)}), resultado = await resposta.json();
+  if (!resposta.ok) return alert(resultado.erro || 'Não foi possível salvar o usuário.');
+  limparFormUsuario(); await carregarUsuariosAdmin();
+});
+
+async function carregarAuditoria() {
+  const filtro = document.getElementById('filtroUsuarioAuditoria').value.trim(), params = filtro ? `?usuario=${encodeURIComponent(filtro)}` : '';
+  const resposta = await fetch(`/api/admin/auditoria${params}`), dados = await resposta.json();
+  if (!resposta.ok) return alert(dados.erro || 'Não foi possível carregar o histórico.');
+  document.querySelector('#tabelaAuditoria tbody').innerHTML = dados.length ? dados.map(a => `<tr><td>${cargaHtml(a.data_hora)}</td><td><strong>${cargaHtml(a.usuario)}</strong></td><td>${cargaHtml(a.acao)}</td><td>${cargaHtml(a.metodo || '')} ${cargaHtml(a.caminho || '')}</td><td>${a.status_http && a.status_http < 400 ? '<span class="tag-ativo">Sucesso</span>' : '<span class="tag-inativo">Falha</span>'}</td><td class="auditoria-detalhes">${cargaHtml(a.detalhes || '')}</td></tr>`).join('') : '<tr><td colspan="6">Nenhuma atividade encontrada.</td></tr>';
+}
+document.getElementById('btnFiltrarAuditoria').addEventListener('click', carregarAuditoria);
+document.getElementById('filtroUsuarioAuditoria').addEventListener('keydown', e => { if (e.key === 'Enter') carregarAuditoria(); });
+
+inicializarSessao();
 
 // Fotos separadas por categoria, tanto na emissão quanto no histórico.
 let fotosRomaneioId = null;

@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 from paths import base_dir
 
 DB_DIR = os.path.join(base_dir(), 'db')
@@ -132,6 +133,43 @@ def init_db():
             imagem BLOB NOT NULL
         );
 
+        -- Agenda de expedição importada do módulo Programação de Carregamento do Portal PCP.
+        CREATE TABLE IF NOT EXISTS programacao_carregamentos (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_carregamento   TEXT NOT NULL,
+            horario             TEXT NOT NULL,
+            caminhao            TEXT NOT NULL,
+            material            TEXT NOT NULL,
+            cliente             TEXT NOT NULL,
+            observacao          TEXT,
+            criado_em           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            login           TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            nome            TEXT NOT NULL,
+            senha_hash      TEXT NOT NULL,
+            administrador   INTEGER NOT NULL DEFAULT 0,
+            ativo           INTEGER NOT NULL DEFAULT 1,
+            permissoes_json TEXT NOT NULL DEFAULT '{}',
+            criado_em       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            atualizado_em   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS auditoria (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id  INTEGER,
+            usuario     TEXT NOT NULL,
+            data_hora   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            acao        TEXT NOT NULL,
+            metodo      TEXT,
+            caminho     TEXT,
+            detalhes    TEXT,
+            status_http INTEGER,
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        );
+
         CREATE TABLE IF NOT EXISTS meta (
             chave  TEXT PRIMARY KEY,
             valor  TEXT
@@ -186,6 +224,22 @@ def init_db():
                     ('10', 'TRAEL'),
                 ]
             )
+
+        # Administrador inicial. A senha fica salva somente como hash forte.
+        cur.execute("SELECT id FROM usuarios WHERE login = ? COLLATE NOCASE;", ('Admin',))
+        if not cur.fetchone():
+            permissoes_admin = {
+                'identificacao_pallets': True, 'relacao_carga': True, 'romaneio': True,
+                'programacao_carregamento': True, 'carregamento_criar': True,
+                'carregamento_editar': True, 'carregamento_excluir': True,
+            }
+            cur.execute('''INSERT INTO usuarios
+                (login, nome, senha_hash, administrador, ativo, permissoes_json)
+                VALUES (?, ?, ?, 1, 1, ?)''', (
+                    'Admin', 'Administrador',
+                    'scrypt:32768:8:1$bJ2UNxgEDgxmWmAW$935c6249c387df2d4f7fb77918cf5af1bc2ff21cbabdf4c2bef770862d04d6811cccaee391cd71b174a691cea5ef12e72c842a4f4ffb6a03e43158dbd49d84ac',
+                    json.dumps(permissoes_admin, ensure_ascii=False)
+                ))
         conn.commit()
 
 
