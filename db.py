@@ -125,6 +125,13 @@ def init_db():
             FOREIGN KEY (pallet_id) REFERENCES pallets(id)
         );
 
+        CREATE TABLE IF NOT EXISTS romaneio_fotos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            romaneio_id INTEGER NOT NULL REFERENCES romaneios(id) ON DELETE CASCADE,
+            categoria TEXT NOT NULL CHECK(categoria IN ('pallets', 'carga')),
+            imagem BLOB NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS meta (
             chave  TEXT PRIMARY KEY,
             valor  TEXT

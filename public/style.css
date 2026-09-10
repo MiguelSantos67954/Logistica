@@ -386,3 +386,9 @@ tbody tr:hover { background: #f8fafc; }
   .ident-main-grid, .ident-tools-grid { grid-template-columns: 1fr; }
   .ident-card-principal { min-height: 280px; padding: 28px; }
 }
+
+.fotos-categorias { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+.fotos-galeria { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.fotos-galeria figure { margin: 0; width: 160px; }
+.fotos-galeria img { width: 160px; height: 120px; object-fit: contain; background: #edf1f4; border-radius: 6px; }
+.fotos-galeria figcaption { overflow-wrap: anywhere; font-size: 12px; }

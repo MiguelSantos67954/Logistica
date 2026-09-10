@@ -652,7 +652,7 @@ async function carregarHistoricoRomaneios() {
       <td>${escaparHtml(r.transportadora || '')}</td><td>${r.quantidade_pallets || 0}</td>
       <td>${Number(r.peso_bruto || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg</td>
       <td>${r.arquivo_pdf ? `<a href="/api/romaneios/${r.id}/pdf" target="_blank">abrir</a>` : ''}</td>
-      <td><button class="btn-excluir-romaneio" data-id="${r.id}" data-numero="${escaparHtml(r.codigo || r.numero)}">Excluir</button></td></tr>`).join('') || '<tr><td colspan="11">Nenhum romaneio emitido.</td></tr>';
+      <td><button class="btn-fotos-romaneio" data-id="${r.id}" data-numero="${escaparHtml(r.codigo || r.numero)}">Fotos</button> <button class="btn-excluir-romaneio" data-id="${r.id}" data-numero="${escaparHtml(r.codigo || r.numero)}">Excluir</button></td></tr>`).join('') || '<tr><td colspan="11">Nenhum romaneio emitido.</td></tr>';
   } catch (e) { tbody.innerHTML = '<tr><td colspan="11">Erro ao carregar o histórico.</td></tr>'; }
 }
 
@@ -681,17 +681,18 @@ document.getElementById('btnGerarRomaneio').addEventListener('click', async () =
   btn.disabled = true;
   try {
     const resp = await fetch('/api/romaneios', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      method: 'POST',
+      body: formularioFotos({
         numerosPallets: numeros, dataEnvio: document.getElementById('romaneioDataEnvio').value,
         frete: document.getElementById('romaneioFrete').value, transportadora: document.getElementById('romaneioTransportadora').value,
         veiculo: document.getElementById('romaneioVeiculo').value, motorista: document.getElementById('romaneioMotorista').value,
         observacao: document.getElementById('romaneioObservacao').value, cargaId,
       }),
     });
-    const dados = await resp.json();
+    const dados = await respostaFotos(resp);
     if (!resp.ok) throw new Error(dados.erro || 'Não foi possível gerar o romaneio.');
     alert(`Romaneio Nº ${dados.codigo} gerado. Aderência à relação: ${Number(dados.aderenciaCarga).toLocaleString('pt-BR', {minimumFractionDigits:1})}%.`);
+    limparFotosSelecionadas();
     document.getElementById('romaneioNumeros').value = '';
     limparPreviewRomaneio();
     await carregarHistoricoRomaneios();
@@ -921,3 +922,108 @@ document.getElementById('btnGerarPdfTestePainel').addEventListener('click', () =
 // INICIALIZACAO
 // ==========================================
 carregarStatus();
+
+// Fotos separadas por categoria, tanto na emissão quanto no histórico.
+let fotosRomaneioId = null;
+const fotosPendentes = { pallets: [], carga: [] };
+const painelFotos = document.createElement('section');
+painelFotos.className = 'aba';
+painelFotos.innerHTML = `<h2 id="tituloFotos">Fotos do novo romaneio</h2>
+  <p>JPG, PNG ou WebP. Até 10 MB por foto, 30 fotos e 50 MB por envio. As fotos serão incluídas no PDF.</p>
+  <div class="fotos-categorias">${[['pallets', 'Fotos dos pallets'], ['carga', 'Fotos da carga completa']].map(([cat, titulo]) => `
+    <div><h3>${titulo}</h3><label>Adicionar fotos<input type="file" data-categoria="${cat}" accept="image/jpeg,image/png,image/webp" multiple></label>
+    <div class="fotos-galeria" id="fotos-${cat}"></div></div>`).join('')}</div>
+  <div id="acoesFotosHistorico" hidden><button type="button" id="salvarFotos" class="btn-primary">Salvar fotos</button>
+  <button type="button" id="fecharFotos">Voltar ao novo romaneio</button></div>`;
+document.querySelector('#view-romaneio .bloco-historico-romaneio').before(painelFotos);
+function limparFotosSelecionadas() {
+  for (const cat of ['pallets', 'carga']) {
+    fotosPendentes[cat].forEach(f => URL.revokeObjectURL(f.url));
+    fotosPendentes[cat] = [];
+  }
+  painelFotos.querySelectorAll('input').forEach(i => i.value = '');
+  renderFotos();
+}
+function formularioFotos(dados) {
+  const form = new FormData();
+  if (dados) form.append('dados', JSON.stringify(dados));
+  // Anexos do histórico nunca são enviados para uma nova emissão.
+  if (!dados || fotosRomaneioId === null) {
+    for (const cat of ['pallets', 'carga']) fotosPendentes[cat].forEach(f => form.append(cat, f.arquivo));
+  }
+  return form;
+}
+let fotosSalvas = [];
+function renderFotos() {
+  for (const cat of ['pallets', 'carga']) {
+    document.getElementById(`fotos-${cat}`).innerHTML = fotosSalvas.filter(f => f.categoria === cat).map(f => `
+      <figure><a href="/api/romaneios/${fotosRomaneioId}/fotos/${f.id}" target="_blank"><img src="/api/romaneios/${fotosRomaneioId}/fotos/${f.id}" alt="${cat === 'pallets' ? 'Pallets' : 'Carga completa'}"></a>
+      <button type="button" data-excluir-foto="${f.id}">Excluir foto</button></figure>`).join('') + fotosPendentes[cat].map((f, i) => `
+      <figure><img src="${f.url}" alt="Prévia da foto"><figcaption>${escaparHtml(f.arquivo.name)}</figcaption>
+      <button type="button" data-remover="${i}" data-cat="${cat}">Remover seleção</button></figure>`).join('');
+  }
+}
+painelFotos.addEventListener('change', e => {
+  const cat = e.target.dataset.categoria;
+  if (!cat) return;
+  const arquivos = [...e.target.files];
+  const todos = [...fotosPendentes.pallets, ...fotosPendentes.carga].map(f => f.arquivo).concat(arquivos);
+  if (todos.length > 30 || todos.some(f => f.size > 10 * 1024 * 1024) || todos.reduce((n, f) => n + f.size, 0) > 49 * 1024 * 1024) {
+    e.target.value = ''; return alert('Limite: 30 fotos, 10 MB por foto e 49 MB de arquivos por envio.');
+  }
+  arquivos.forEach(arquivo => fotosPendentes[cat].push({arquivo, url: URL.createObjectURL(arquivo)}));
+  e.target.value = '';
+  renderFotos();
+});
+async function respostaFotos(resp) {
+  if (!(resp.headers.get('content-type') || '').includes('application/json')) {
+    if ([404, 405, 415].includes(resp.status) || resp.ok) {
+      throw new Error('O servidor está com uma versão anterior, sem suporte ao envio de fotos. Feche a janela do servidor, execute iniciar.bat novamente e atualize a página. Suas fotos selecionadas ainda não foram salvas.');
+    }
+    if (resp.status === 413) throw new Error('As fotos ultrapassam o limite de envio. Selecione menos fotos e tente novamente.');
+    throw new Error(`O servidor não conseguiu salvar (HTTP ${resp.status}). Confira o erro na janela do servidor. As fotos selecionadas foram mantidas para tentar novamente.`);
+  }
+  const dados = await resp.json();
+  if (!resp.ok) throw new Error(dados.erro || 'Não foi possível atualizar as fotos.');
+  return dados;
+}
+painelFotos.addEventListener('click', async e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  if (btn.dataset.remover !== undefined) {
+    const [foto] = fotosPendentes[btn.dataset.cat].splice(Number(btn.dataset.remover), 1);
+    URL.revokeObjectURL(foto.url); renderFotos(); return;
+  }
+  btn.disabled = true;
+  try {
+    if (btn.dataset.excluirFoto && confirm('Excluir esta foto do romaneio?')) {
+      await respostaFotos(await fetch(`/api/romaneios/${fotosRomaneioId}/fotos/${btn.dataset.excluirFoto}`, {method: 'DELETE'}));
+      fotosSalvas = fotosSalvas.filter(f => String(f.id) !== btn.dataset.excluirFoto);
+      renderFotos();
+    }
+    if (btn.id === 'salvarFotos') {
+      fotosSalvas = await respostaFotos(await fetch(`/api/romaneios/${fotosRomaneioId}/fotos`, {method: 'POST', body: formularioFotos()}));
+      limparFotosSelecionadas();
+      alert('Fotos salvas. Ao abrir o PDF, ele incluirá as fotos atualizadas.');
+    }
+    if (btn.id === 'fecharFotos') {
+      if ((fotosPendentes.pallets.length || fotosPendentes.carga.length) && !confirm('Descartar as fotos ainda não salvas?')) return;
+      fotosRomaneioId = null; fotosSalvas = []; limparFotosSelecionadas();
+      document.getElementById('tituloFotos').textContent = 'Fotos do novo romaneio';
+      document.getElementById('acoesFotosHistorico').hidden = true;
+    }
+  } catch (erro) { alert(erro.message); }
+  finally { btn.disabled = false; }
+});
+document.querySelector('#tabelaHistoricoRomaneios tbody').addEventListener('click', async e => {
+  const btn = e.target.closest('.btn-fotos-romaneio');
+  if (!btn) return;
+  if ((fotosPendentes.pallets.length || fotosPendentes.carga.length) && !confirm('Descartar as fotos selecionadas para abrir outro romaneio?')) return;
+  try {
+    const fotos = await respostaFotos(await fetch(`/api/romaneios/${btn.dataset.id}/fotos`));
+    fotosRomaneioId = Number(btn.dataset.id); fotosSalvas = fotos; limparFotosSelecionadas();
+    document.getElementById('tituloFotos').textContent = `Fotos do romaneio ${btn.dataset.numero}`;
+    document.getElementById('acoesFotosHistorico').hidden = false;
+    painelFotos.scrollIntoView({behavior: 'smooth'});
+  } catch (erro) { alert(erro.message); }
+});

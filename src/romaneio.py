@@ -1,4 +1,5 @@
 import os
+from io import BytesIO
 import re
 import unicodedata
 from datetime import datetime
@@ -196,6 +197,33 @@ def gerar_pdf_romaneio(registro, pallets):
     ]))
     iniciar_resumo('RESUMO POR PEDIDO DE VENDA')
     elementos.append(pedido_tabela)
+
+    for categoria, titulo_fotos in (('pallets', 'FOTOS DOS PALLETS'), ('carga', 'FOTOS DA CARGA COMPLETA')):
+        fotos = [f for f in registro.get('fotos', []) if f['categoria'] == categoria]
+        por_pagina = 8
+        for inicio in range(0, len(fotos), por_pagina):
+            lote = fotos[inicio:inicio + por_pagina]
+            elementos.extend([PageBreak(), Paragraph(
+                f'<b>ROMANEIO {codigo_romaneio} - {titulo_fotos}</b> '
+                f'({inicio + 1}-{inicio + len(lote)}/{len(fotos)})', estilos['Heading2'])])
+            celulas = []
+            for indice, foto in enumerate(lote, inicio + 1):
+                imagem = Image(BytesIO(foto['imagem']))
+                largura_max, altura_max = 6 * cm, 7 * cm
+                escala = min(largura_max / imagem.imageWidth, altura_max / imagem.imageHeight)
+                imagem.drawWidth = imagem.imageWidth * escala
+                imagem.drawHeight = imagem.imageHeight * escala
+                celulas.append([imagem, Paragraph(f'Foto {indice}', estilos['Normal'])])
+            celulas.extend([''] * (8 - len(celulas)))
+            grade = Table([celulas[:4], celulas[4:]], colWidths=[6.65 * cm] * 4,
+                          rowHeights=[8 * cm] * 2)
+            grade.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ]))
+            elementos.append(grade)
 
     def rodape(canvas, documento):
         canvas.saveState()

@@ -1,5 +1,7 @@
 import os
 import json
+from io import BytesIO
+from src.fotos import ler_uploads, salvar_fotos, fotos_pdf
 from datetime import datetime
 
 from flask import Flask, request, jsonify, send_from_directory, send_file
@@ -15,6 +17,42 @@ from src.relacao_carga import gerar_pdf_relacao_carga
 
 app = Flask(__name__, static_folder=os.path.join(base_dir(), 'public'), static_url_path='')
 CORS(app, supports_credentials=True)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
+
+@app.errorhandler(413)
+def upload_grande(err):
+    return jsonify({'erro': 'O envio deve ter no máximo 50 MB.'}), 413
+
+
+@app.route('/api/romaneios/<int:romaneio_id>/fotos', methods=['GET', 'POST'])
+def api_romaneio_fotos(romaneio_id):
+    with get_connection() as conn:
+        if not conn.execute('SELECT id FROM romaneios WHERE id=?', (romaneio_id,)).fetchone():
+            return jsonify({'erro': 'Romaneio não encontrado.'}), 404
+        if request.method == 'POST':
+            try:
+                fotos = ler_uploads(request)
+                if not fotos:
+                    raise ValueError('Selecione ao menos uma foto.')
+                salvar_fotos(conn, romaneio_id, fotos)
+            except ValueError as err:
+                return jsonify({'erro': str(err)}), 400
+        return jsonify([dict(r) for r in conn.execute(
+            'SELECT id, categoria FROM romaneio_fotos WHERE romaneio_id=? ORDER BY id', (romaneio_id,))])
+
+
+@app.route('/api/romaneios/<int:romaneio_id>/fotos/<int:foto_id>', methods=['GET', 'DELETE'])
+def api_romaneio_foto(romaneio_id, foto_id):
+    with get_connection() as conn:
+        row = conn.execute('SELECT imagem FROM romaneio_fotos WHERE id=? AND romaneio_id=?',
+                           (foto_id, romaneio_id)).fetchone()
+        if not row:
+            return jsonify({'erro': 'Foto não encontrada.'}), 404
+        if request.method == 'DELETE':
+            conn.execute('DELETE FROM romaneio_fotos WHERE id=?', (foto_id,))
+            return jsonify({'ok': True})
+        return send_file(BytesIO(row['imagem']), mimetype='image/jpeg')
 
 TARA_PMC_PKT = 6.2   # kg por carretel, quando o fio e' capa (PMC/PKT) - mesma regra da planilha
 TARA_NU = 19.3       # kg por carretel, quando o fio e' nu
@@ -770,7 +808,11 @@ def api_romaneios_preview():
 
 @app.route('/api/romaneios', methods=['POST'])
 def api_romaneios_criar():
-    d = request.get_json() or {}
+    try:
+        d = json.loads(request.form.get('dados', '{}')) if request.mimetype == 'multipart/form-data' else request.get_json() or {}
+        fotos = ler_uploads(request)
+    except (ValueError, TypeError) as err:
+        return jsonify({'erro': str(err)}), 400
     try:
         carga_id = int(d.get('cargaId'))
     except (TypeError, ValueError):
@@ -820,6 +862,8 @@ def api_romaneios_criar():
              peso_liquido, peso_bruto, len(pallets), carga_id, comparacao['percentual']),
         )
         romaneio_id = cur.lastrowid
+        salvar_fotos(conn, romaneio_id, fotos)
+        registro['fotos'] = fotos_pdf(conn, romaneio_id)
         caminho_pdf = gerar_pdf_romaneio(registro, pallets)
         nome_pdf = os.path.basename(caminho_pdf)
         ids = [p['id'] for p in pallets]
@@ -876,6 +920,7 @@ def api_romaneio_pdf(romaneio_id):
         cur.execute("""SELECT p.* FROM pallets p JOIN romaneio_pallets rp ON rp.pallet_id=p.id
                        WHERE rp.romaneio_id=? ORDER BY p.numero;""", (romaneio_id,))
         pallets = [_pallet_com_itens(p) for p in cur.fetchall()]
+        registro['fotos'] = fotos_pdf(conn, romaneio_id)
         caminho = gerar_pdf_romaneio(registro, pallets)
         nome_pdf = os.path.basename(caminho)
         cur.execute("UPDATE romaneios SET arquivo_pdf=? WHERE id=?;", (nome_pdf, romaneio_id))
