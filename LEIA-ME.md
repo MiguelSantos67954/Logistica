@@ -1,12 +1,24 @@
 # Portal Logística
 
 O portal reúne os módulos da logística. Atualmente inclui o módulo
-**Identificação de Pallets**, com os fluxos de Fios e Painel/Kits, além de
+**Identificação de Pallets**, com os fluxos de Fios e Outros Materiais, além de
 **Relação de Carga**, **Romaneio** e **Programação de Carregamento**.
+Também inclui **Análise de Materiais Prontos**, com indicadores dos packing lists
+em estoque ou expedidos, filtros por período/tipo e consolidação por cliente e produto.
 
 O módulo Programação de Carregamento foi adaptado do Portal PCP e inclui linha
 do tempo operacional, calendário mensal, cadastro/edição e histórico de cargas.
 Os registros ficam no banco local do próprio Portal Logística.
+
+Cada nova Relação de Carga deve estar vinculada a um carregamento programado.
+Ao emitir o Romaneio, o agendamento é concluído automaticamente e o PDF do
+romaneio passa a ficar acessível pelo Histórico de Carregamentos. Se o romaneio
+ou a relação forem excluídos, o agendamento volta ao estado anterior disponível.
+
+Cliente, transportadora, veículo/placa e motorista são reaproveitados da
+Programação para a Relação e da Relação para o Romaneio, evitando redigitação.
+Os números dos packing lists permanecem obrigatoriamente manuais no Romaneio
+para preservar a conferência física da expedição.
 
 ## Acesso, permissões e auditoria
 
@@ -27,9 +39,9 @@ compartilha banco nem código com ele.
 
 ## O que foi recriado
 
-- **Home** com os módulos Fios, Painel/Kits, Histórico e Configurações, igual ao
+- **Home** com os módulos Fios, Outros Materiais, Histórico e Configurações, igual ao
   conceito da aba `HOME` da planilha.
-- **Módulo Fios / Painel**: você digita apenas **OP** e **Qtde** por linha — OC,
+- **Módulo Fios / Outros Materiais**: você digita apenas **OP** e **Qtde** por linha — OC,
   Pedido, Código, Descrição, Tipo (NU/PMC/PKT) e NCM vêm automaticamente do
   cache local, que é alimentado pelo ERP. Mesma ideia do `XLOOKUP` da planilha
   contra a aba oculta `Funil`.
@@ -58,7 +70,7 @@ compartilha banco nem código com ele.
   de clientes usada no nome do PDF (equivalente às colunas `IP:IQ` da aba
   `Cliente`) — ambas editáveis pela tela, sem precisar mexer em planilha/VBA.
 - **Teste de saída do PDF**: nas Configurações, permite conferir separadamente
-  os modelos de Fios e de Painel/Kits, sem incluir o teste no histórico.
+  os modelos de Fios e de Outros Materiais, sem incluir o teste no histórico.
 
 ## ⚠️ O que você precisa revisar antes de usar de verdade
 
@@ -70,7 +82,7 @@ compartilha banco nem código com ele.
    batem exatamente com a customização de vocês. Rode a query direto no SSMS,
    compare com o resultado que a planilha mostra na aba `Funil`, e ajuste os
    nomes de campo se precisar — o resto do sistema não muda.
-2. A regra de peso do módulo **Painel/Kits** está deixada simples (peso bruto =
+2. A regra de peso do módulo **Outros Materiais** está deixada simples (peso bruto =
    peso líquido + tara do palete, sem tara por item) porque eu não abri a aba
    `PAINEL_KITS`/`MEDIDAS_CORRUGADO` a fundo. Se lá existir uma tara por
    dimensão do painel, me diga a regra que eu ajusto em `server.py`
@@ -111,7 +123,7 @@ public/
 
 ## Diferenças em relação à planilha original
 
-- Módulos Fios e Painel/Kits compartilham a mesma numeração sequencial e o
+- Módulos Fios e Outros Materiais compartilham a mesma numeração sequencial e o
   mesmo histórico (`pallets`), assim como na planilha (as duas macros gravavam
   na mesma aba `Base`).
 - Não recriei a senha de proteção de abas (da planilha original) porque, num sistema

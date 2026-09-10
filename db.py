@@ -200,6 +200,22 @@ def init_db():
             if coluna not in colunas_romaneios:
                 cur.execute(f"ALTER TABLE romaneios ADD COLUMN {coluna} {definicao};")
 
+        colunas_cargas = {r['name'] for r in cur.execute("PRAGMA table_info(cargas);").fetchall()}
+        if 'programacao_id' not in colunas_cargas:
+            cur.execute("ALTER TABLE cargas ADD COLUMN programacao_id INTEGER;")
+
+        colunas_programacao = {r['name'] for r in cur.execute("PRAGMA table_info(programacao_carregamentos);").fetchall()}
+        if 'status' not in colunas_programacao:
+            cur.execute("ALTER TABLE programacao_carregamentos ADD COLUMN status TEXT NOT NULL DEFAULT 'programado';")
+        if 'romaneio_id' not in colunas_programacao:
+            cur.execute("ALTER TABLE programacao_carregamentos ADD COLUMN romaneio_id INTEGER;")
+        for coluna, definicao in {
+            'transportadora': 'TEXT', 'motorista': 'TEXT',
+            'prioridade': "TEXT NOT NULL DEFAULT 'Normal'",
+        }.items():
+            if coluna not in colunas_programacao:
+                cur.execute(f"ALTER TABLE programacao_carregamentos ADD COLUMN {coluna} {definicao};")
+
         # Seed inicial das medidas de palete, com base na planilha original
         cur.execute("SELECT COUNT(*) AS n FROM paletes;")
         if cur.fetchone()['n'] == 0:
@@ -230,6 +246,7 @@ def init_db():
         if not cur.fetchone():
             permissoes_admin = {
                 'identificacao_pallets': True, 'relacao_carga': True, 'romaneio': True,
+                'analise_materiais': True,
                 'programacao_carregamento': True, 'carregamento_criar': True,
                 'carregamento_editar': True, 'carregamento_excluir': True,
             }

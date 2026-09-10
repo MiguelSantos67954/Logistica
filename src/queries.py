@@ -84,3 +84,27 @@ SELECT
 FROM SA1010
 WHERE D_E_L_E_T_ = ' ';
 """
+
+
+def query_dados_pedido(numero_pedido):
+    """Consulta itens de um pedido para completar OPs cujo vínculo veio vazio."""
+    pedido = str(numero_pedido or '').strip().replace("'", "''")
+    return f"""
+SELECT
+    LTRIM(RTRIM(SC6.C6_NUM)) AS PEDIDO,
+    LTRIM(RTRIM(SC6.C6_ITEM)) AS ITEM,
+    LTRIM(RTRIM(SC6.C6_NUMPCOM)) AS OC,
+    LTRIM(RTRIM(SC6.C6_PRODUTO)) AS CODIGO_PRODUTO,
+    SB1.B1_DESC AS DESCRICAO,
+    LTRIM(RTRIM(SC6.C6_CLI)) AS CODIGO_CLIENTE,
+    CASE WHEN SC5.C5_MENNOTA LIKE '%PMC%' THEN 'PMC'
+         WHEN SC5.C5_MENNOTA LIKE '%PKT%' THEN 'PKT' ELSE '' END AS ISOLACAO
+FROM SC6010 AS SC6
+LEFT JOIN SC5010 AS SC5
+    ON SC5.C5_NUM = SC6.C6_NUM AND SC5.C5_FILIAL = SC6.C6_FILIAL AND SC5.D_E_L_E_T_ = ''
+LEFT JOIN SB1010 AS SB1
+    ON SB1.B1_COD = SC6.C6_PRODUTO AND SB1.B1_FILIAL = SC6.C6_FILIAL AND SB1.D_E_L_E_T_ = ''
+WHERE SC6.D_E_L_E_T_ = ''
+  AND LTRIM(RTRIM(SC6.C6_NUM)) IN ('{pedido}', RIGHT('000000' + '{pedido}', 6))
+ORDER BY SC6.C6_ITEM;
+"""

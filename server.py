@@ -12,7 +12,8 @@ from flask_cors import CORS
 from paths import base_dir
 from db import get_connection
 from src.refresh import refresh_tudo
-from src.mssql import load_config
+from src.mssql import load_config, run_query
+from src.queries import query_dados_pedido
 from src.etiqueta import gerar_pdf_etiqueta
 from src.romaneio import gerar_pdf_romaneio
 from src.relacao_carga import gerar_pdf_relacao_carga
@@ -33,6 +34,7 @@ app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
 
 PERMISSOES_PADRAO = {
     'identificacao_pallets': False, 'relacao_carga': False, 'romaneio': False,
+    'analise_materiais': False,
     'programacao_carregamento': False, 'carregamento_criar': False,
     'carregamento_editar': False, 'carregamento_excluir': False,
 }
@@ -69,11 +71,16 @@ def _permissao_da_requisicao():
         if metodo == 'POST': return 'carregamento_criar'
         if metodo == 'PUT': return 'carregamento_editar'
         if metodo == 'DELETE': return 'carregamento_excluir'
+        if request.args.get('status') == 'disponivel': return 'relacao_ou_programacao'
         return 'programacao_carregamento'
     if path.startswith('/api/romaneios'):
+        if metodo == 'GET' and '/fotos' in path:
+            return 'romaneio_ou_programacao'
         return 'romaneio'
     if path.startswith('/api/cargas'):
         return 'relacao_carga' if metodo != 'GET' else 'relacao_ou_romaneio'
+    if path.startswith('/api/analise-materiais'):
+        return 'analise_materiais'
     if path.startswith('/api/estoque-pallets') or path.startswith('/api/produtos/por-codigo'):
         return 'relacao_carga'
     if path.startswith('/api/') and path not in ('/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/atividade', '/api/status'):
@@ -99,9 +106,11 @@ def autenticar_requisicao():
     autorizado = (
         not permissao or bool(usuario['administrador']) or
         (permissao == 'relacao_ou_romaneio' and (g.permissoes['relacao_carga'] or g.permissoes['romaneio'])) or
+        (permissao == 'relacao_ou_programacao' and (g.permissoes['relacao_carga'] or g.permissoes['programacao_carregamento'])) or
+        (permissao == 'romaneio_ou_programacao' and (g.permissoes['romaneio'] or g.permissoes['programacao_carregamento'])) or
         (permissao in ('carregamento_criar', 'carregamento_editar', 'carregamento_excluir')
          and g.permissoes['programacao_carregamento'] and bool(g.permissoes.get(permissao))) or
-        (permissao not in ('carregamento_criar', 'carregamento_editar', 'carregamento_excluir', 'relacao_ou_romaneio')
+        (permissao not in ('carregamento_criar', 'carregamento_editar', 'carregamento_excluir', 'relacao_ou_romaneio', 'relacao_ou_programacao', 'romaneio_ou_programacao')
          and bool(g.permissoes.get(permissao)))
     )
     if not autorizado:
@@ -332,19 +341,75 @@ def validar_carregamento(data):
 def api_carregamentos_list():
     inicio = request.args.get('inicio', '').strip()
     fim = request.args.get('fim', '').strip()
-    query = 'SELECT * FROM programacao_carregamentos'
+    status = request.args.get('status', '').strip()
+    historico = request.args.get('historico') == '1'
+    query = '''SELECT pc.*, r.numero AS romaneio_numero, r.data_envio AS romaneio_data,
+               c.numero AS carga_numero FROM programacao_carregamentos pc
+               LEFT JOIN romaneios r ON r.id=pc.romaneio_id
+               LEFT JOIN cargas c ON c.programacao_id=pc.id'''
     filtros, params = [], []
     if inicio:
-        filtros.append('data_carregamento >= ?')
+        filtros.append('pc.data_carregamento >= ?')
         params.append(inicio)
     if fim:
-        filtros.append('data_carregamento <= ?')
+        filtros.append('pc.data_carregamento <= ?')
         params.append(fim)
+    if status == 'disponivel':
+        filtros.append("pc.status = 'programado'")
+    elif status == 'ativo':
+        filtros.append("pc.status IN ('programado', 'vinculado')")
+    elif status in ('programado', 'vinculado', 'concluido'):
+        filtros.append('pc.status = ?')
+        params.append(status)
+    if historico:
+        filtros.append("(pc.data_carregamento < ? OR pc.status = 'concluido')")
+        params.append(datetime.now().strftime('%Y-%m-%d'))
     if filtros:
         query += ' WHERE ' + ' AND '.join(filtros)
-    query += ' ORDER BY data_carregamento, horario, id'
+    query += ' GROUP BY pc.id ORDER BY pc.data_carregamento, pc.horario, pc.id'
     with get_connection() as conn:
         return jsonify([dict(row) for row in conn.execute(query, params).fetchall()])
+
+
+@app.route('/api/carregamentos/<int:carregamento_id>/resumo', methods=['GET'])
+def api_carregamento_resumo(carregamento_id):
+    with get_connection() as conn:
+        programacao = conn.execute('SELECT * FROM programacao_carregamentos WHERE id=?', (carregamento_id,)).fetchone()
+        if not programacao:
+            return jsonify({'erro': 'Carregamento programado não encontrado.'}), 404
+        carga = conn.execute('''SELECT c.*, COUNT(cp.pallet_id) AS quantidade_pallets,
+            COALESCE(SUM(p.peso_liquido),0) AS peso_liquido,
+            COALESCE(SUM(p.peso_bruto),0) AS peso_bruto
+            FROM cargas c LEFT JOIN carga_pallets cp ON cp.carga_id=c.id
+            LEFT JOIN pallets p ON p.id=cp.pallet_id
+            WHERE c.programacao_id=? GROUP BY c.id ORDER BY c.id DESC LIMIT 1''', (carregamento_id,)).fetchone()
+        carga_dict = dict(carga) if carga else None
+        pallets = []
+        itens_manuais = []
+        if carga:
+            pallets = [dict(row) for row in conn.execute('''SELECT p.id, p.numero, p.modulo,
+                p.cliente_nome, p.peso_liquido, p.peso_bruto, p.carreteis
+                FROM pallets p JOIN carga_pallets cp ON cp.pallet_id=p.id
+                WHERE cp.carga_id=? ORDER BY p.numero''', (carga['id'],)).fetchall()]
+            itens_manuais = [dict(row) for row in conn.execute('''SELECT codigo_produto,
+                descricao, quantidade, observacao FROM carga_itens WHERE carga_id=? ORDER BY id''',
+                (carga['id'],)).fetchall()]
+        romaneio = None
+        if programacao['romaneio_id']:
+            row = conn.execute('SELECT * FROM romaneios WHERE id=?', (programacao['romaneio_id'],)).fetchone()
+            romaneio = dict(row) if row else None
+        elif carga:
+            row = conn.execute('SELECT * FROM romaneios WHERE carga_id=? ORDER BY id DESC LIMIT 1', (carga['id'],)).fetchone()
+            romaneio = dict(row) if row else None
+        fotos = []
+        if romaneio:
+            fotos = [dict(row) for row in conn.execute('''SELECT id, categoria FROM romaneio_fotos
+                WHERE romaneio_id=? ORDER BY categoria, id''', (romaneio['id'],)).fetchall()]
+        return jsonify({
+            'programacao': dict(programacao), 'relacaoCarga': carga_dict,
+            'pallets': pallets, 'itensManuais': itens_manuais,
+            'romaneio': romaneio, 'fotos': fotos,
+        })
 
 
 @app.route('/api/carregamentos', methods=['POST'])
@@ -355,10 +420,12 @@ def api_carregamentos_create():
         return jsonify({'ok': False, 'erro': erro}), 400
     with get_connection() as conn:
         cursor = conn.execute('''INSERT INTO programacao_carregamentos
-            (data_carregamento, horario, caminhao, material, cliente, observacao)
-            VALUES (?, ?, ?, ?, ?, ?)''', (
+            (data_carregamento, horario, caminhao, material, cliente, transportadora, motorista, prioridade, observacao)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
                 data['data_carregamento'].strip(), data['horario'].strip(), data['caminhao'].strip(),
-                data['material'].strip(), data['cliente'].strip(), (data.get('observacao') or '').strip()
+                data['material'].strip(), data['cliente'].strip(), (data.get('transportadora') or '').strip(),
+                (data.get('motorista') or '').strip(), (data.get('prioridade') or 'Normal').strip(),
+                (data.get('observacao') or '').strip()
             ))
         return jsonify({'ok': True, 'id': cursor.lastrowid}), 201
 
@@ -370,10 +437,16 @@ def api_carregamentos_update(carregamento_id):
     if erro:
         return jsonify({'ok': False, 'erro': erro}), 400
     with get_connection() as conn:
+        atual = conn.execute('SELECT status FROM programacao_carregamentos WHERE id=?', (carregamento_id,)).fetchone()
+        if atual and atual['status'] != 'programado':
+            return jsonify({'ok': False, 'erro': 'Carregamento vinculado a uma relação ou romaneio não pode ser editado.'}), 409
         cursor = conn.execute('''UPDATE programacao_carregamentos SET
-            data_carregamento=?, horario=?, caminhao=?, material=?, cliente=?, observacao=? WHERE id=?''', (
+            data_carregamento=?, horario=?, caminhao=?, material=?, cliente=?, transportadora=?,
+            motorista=?, prioridade=?, observacao=? WHERE id=?''', (
                 data['data_carregamento'].strip(), data['horario'].strip(), data['caminhao'].strip(),
-                data['material'].strip(), data['cliente'].strip(), (data.get('observacao') or '').strip(),
+                data['material'].strip(), data['cliente'].strip(), (data.get('transportadora') or '').strip(),
+                (data.get('motorista') or '').strip(), (data.get('prioridade') or 'Normal').strip(),
+                (data.get('observacao') or '').strip(),
                 carregamento_id
             ))
         if not cursor.rowcount:
@@ -384,6 +457,9 @@ def api_carregamentos_update(carregamento_id):
 @app.route('/api/carregamentos/<int:carregamento_id>', methods=['DELETE'])
 def api_carregamentos_delete(carregamento_id):
     with get_connection() as conn:
+        atual = conn.execute('SELECT status FROM programacao_carregamentos WHERE id=?', (carregamento_id,)).fetchone()
+        if atual and atual['status'] != 'programado':
+            return jsonify({'ok': False, 'erro': 'Carregamento vinculado a uma relação ou romaneio não pode ser excluído.'}), 409
         cursor = conn.execute('DELETE FROM programacao_carregamentos WHERE id = ?', (carregamento_id,))
         if not cursor.rowcount:
             return jsonify({'ok': False, 'erro': 'Carregamento não encontrado.'}), 404
@@ -467,6 +543,38 @@ def api_lookup():
 
 
 # ---------- Linhas do cache do ERP (consulta e ajuste local) ----------
+@app.route('/api/pedidos/lookup', methods=['GET'])
+def api_pedido_lookup():
+    pedido = request.args.get('pedido', '').strip()
+    produto = request.args.get('produto', '').strip()
+    if not pedido:
+        return jsonify({'erro': 'Informe o número do pedido.'}), 400
+    if not pedido.replace('-', '').isalnum() or len(pedido) > 20:
+        return jsonify({'erro': 'Número de pedido inválido.'}), 400
+    try:
+        itens = run_query(query_dados_pedido(pedido))
+    except Exception as err:
+        app.logger.exception('Falha ao consultar pedido no ERP')
+        return jsonify({'erro': f'Não foi possível consultar o pedido no ERP: {err}'}), 502
+    if not itens:
+        return jsonify({'erro': 'Pedido não encontrado no ERP.'}), 404
+
+    def limpar(item):
+        return {'pedido': str(item.get('PEDIDO') or pedido).strip(),
+                'item': str(item.get('ITEM') or '').strip(), 'oc': str(item.get('OC') or '').strip(),
+                'codigo_produto': str(item.get('CODIGO_PRODUTO') or '').strip(),
+                'descricao': str(item.get('DESCRICAO') or '').strip(),
+                'codigo_cliente': str(item.get('CODIGO_CLIENTE') or '').strip(),
+                'isolacao': str(item.get('ISOLACAO') or '').strip()}
+
+    itens = [limpar(item) for item in itens]
+    if produto:
+        correspondentes = [item for item in itens if item['codigo_produto'].upper() == produto.upper()]
+        if len(correspondentes) == 1:
+            return jsonify({'item': correspondentes[0], 'itens': itens})
+    return jsonify({'item': itens[0] if len(itens) == 1 else None, 'itens': itens})
+
+
 @app.route('/api/cache-ordens', methods=['GET'])
 def api_cache_ordens_list():
     modulo = request.args.get('modulo', '').strip()
@@ -861,6 +969,76 @@ def _pallet_com_itens(row):
     return pallet
 
 
+# ---------- Análise de materiais prontos ----------
+@app.route('/api/analise-materiais', methods=['GET'])
+def api_analise_materiais():
+    status = request.args.get('status', 'armazenado').strip().lower()
+    modulo = request.args.get('modulo', '').strip().lower()
+    inicio = request.args.get('inicio', '').strip()
+    fim = request.args.get('fim', '').strip()
+    if status not in ('', 'armazenado', 'expedido'):
+        return jsonify({'erro': 'Status inválido.'}), 400
+    if modulo not in ('', 'fios', 'painel'):
+        return jsonify({'erro': 'Módulo inválido.'}), 400
+
+    filtros, params = [], []
+    for valor, coluna in ((status, 'status'), (modulo, 'modulo')):
+        if valor:
+            filtros.append(f'{coluna} = ?')
+            params.append(valor)
+    if inicio:
+        filtros.append('date(data_hora) >= date(?)')
+        params.append(inicio)
+    if fim:
+        filtros.append('date(data_hora) <= date(?)')
+        params.append(fim)
+    where = (' WHERE ' + ' AND '.join(filtros)) if filtros else ''
+    with get_connection() as conn:
+        rows = conn.execute(f'SELECT * FROM pallets{where} ORDER BY data_hora DESC', params).fetchall()
+
+    pallets = [_pallet_com_itens(row) for row in rows]
+    clientes, produtos = {}, {}
+    hoje = datetime.now().date()
+    faixas = {'0-7 dias': 0, '8-15 dias': 0, '16-30 dias': 0, 'Mais de 30 dias': 0}
+    for pallet in pallets:
+        cliente = pallet.get('cliente_nome') or pallet.get('cliente_codigo') or 'Não informado'
+        grupo = clientes.setdefault(cliente, {'cliente': cliente, 'pallets': 0, 'pesoLiquido': 0, 'pesoBruto': 0})
+        grupo['pallets'] += 1
+        grupo['pesoLiquido'] += float(pallet.get('peso_liquido') or 0)
+        grupo['pesoBruto'] += float(pallet.get('peso_bruto') or 0)
+        try:
+            idade = max((hoje - datetime.fromisoformat(pallet['data_hora']).date()).days, 0)
+            faixa = '0-7 dias' if idade <= 7 else '8-15 dias' if idade <= 15 else '16-30 dias' if idade <= 30 else 'Mais de 30 dias'
+            faixas[faixa] += 1
+        except (TypeError, ValueError):
+            pass
+        for item in pallet['itens']:
+            codigo = str(item.get('codigo_produto') or item.get('codigo') or '').strip() or 'SEM CÓDIGO'
+            descricao = str(item.get('descricao') or '').strip()
+            chave = (codigo, descricao)
+            grupo = produtos.setdefault(chave, {'codigo': codigo, 'descricao': descricao, 'quantidade': 0, 'pallets': set()})
+            try:
+                grupo['quantidade'] += float(item.get('quantidade') or item.get('qtde') or 0)
+            except (TypeError, ValueError):
+                pass
+            grupo['pallets'].add(pallet['id'])
+
+    por_produto = [{**{k: v for k, v in grupo.items() if k != 'pallets'}, 'pallets': len(grupo['pallets'])}
+                   for grupo in produtos.values()]
+    por_produto.sort(key=lambda x: (-x['quantidade'], x['codigo']))
+    return jsonify({
+        'resumo': {'pallets': len(pallets),
+                   'pesoLiquido': sum(float(p.get('peso_liquido') or 0) for p in pallets),
+                   'pesoBruto': sum(float(p.get('peso_bruto') or 0) for p in pallets),
+                   'clientes': len(clientes), 'produtos': len(produtos)},
+        'porModulo': {'fios': sum(p['modulo'] == 'fios' for p in pallets),
+                      'painel': sum(p['modulo'] == 'painel' for p in pallets)},
+        'faixasIdade': [{'faixa': faixa, 'pallets': total} for faixa, total in faixas.items()],
+        'porCliente': sorted(clientes.values(), key=lambda x: (-x['pesoBruto'], x['cliente'])),
+        'porProduto': por_produto[:100],
+    })
+
+
 # ---------- Estoque de produto acabado / relação de carga ----------
 @app.route('/api/produtos/por-codigo', methods=['GET'])
 def api_produto_por_codigo():
@@ -901,6 +1079,10 @@ def api_estoque_pallets():
 @app.route('/api/cargas', methods=['POST'])
 def api_cargas_criar():
     d = request.get_json() or {}
+    try:
+        programacao_id = int(d.get('programacaoId'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'erro': 'Selecione um carregamento programado.'}), 400
     ids = list(dict.fromkeys(int(i) for i in (d.get('palletIds') or []) if str(i).isdigit()))
     itens_manuais = []
     for item in d.get('itensManuais') or []:
@@ -920,6 +1102,9 @@ def api_cargas_criar():
     conn = get_connection()
     try:
         cur = conn.cursor()
+        programacao = cur.execute("SELECT * FROM programacao_carregamentos WHERE id=? AND status='programado'", (programacao_id,)).fetchone()
+        if not programacao:
+            return jsonify({'ok': False, 'erro': 'O carregamento programado não está disponível ou já foi utilizado.'}), 409
         marcadores = ','.join('?' for _ in ids)
         cur.execute(f"SELECT id FROM pallets WHERE id IN ({marcadores}) AND status = 'armazenado';", ids)
         disponiveis = {r['id'] for r in cur.fetchall()}
@@ -928,18 +1113,21 @@ def api_cargas_criar():
         cur.execute("SELECT COALESCE(MAX(numero), 0) + 1 AS proximo FROM cargas;")
         numero = cur.fetchone()['proximo']
         cur.execute(
-            "INSERT INTO cargas (numero, data_hora, cliente, transportadora, veiculo, motorista, prioridade, observacao) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
-            (numero, datetime.now().isoformat(), str(d.get('cliente') or '').strip(),
-             str(d.get('transportadora') or '').strip(), str(d.get('veiculo') or '').strip(),
-             str(d.get('motorista') or '').strip(), str(d.get('prioridade') or '').strip(),
-             str(d.get('observacao') or '').strip()),
+            "INSERT INTO cargas (numero, data_hora, cliente, transportadora, veiculo, motorista, prioridade, observacao, programacao_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            (numero, datetime.now().isoformat(), str(d.get('cliente') or programacao['cliente']).strip(),
+             str(d.get('transportadora') or programacao['transportadora'] or '').strip(),
+             str(d.get('veiculo') or programacao['caminhao'] or '').strip(),
+             str(d.get('motorista') or programacao['motorista'] or '').strip(),
+             str(d.get('prioridade') or programacao['prioridade'] or 'Normal').strip(),
+             str(d.get('observacao') or programacao['observacao'] or '').strip(), programacao_id),
         )
         carga_id = cur.lastrowid
         cur.executemany("INSERT INTO carga_pallets (carga_id, pallet_id) VALUES (?, ?);",
                         [(carga_id, pallet_id) for pallet_id in ids])
         cur.executemany("INSERT INTO carga_itens (carga_id, codigo_produto, descricao, quantidade, observacao) VALUES (?, ?, ?, ?, ?);",
                         [(carga_id, *item) for item in itens_manuais])
+        cur.execute("UPDATE programacao_carregamentos SET status='vinculado' WHERE id=?", (programacao_id,))
         conn.commit()
         return jsonify({'ok': True, 'id': carga_id, 'numero': numero, 'quantidadePallets': len(ids),
                         'quantidadeItensManuais': len(itens_manuais)})
@@ -952,9 +1140,12 @@ def api_cargas_listar():
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("""SELECT c.*, COUNT(cp.pallet_id) AS quantidade_pallets,
+        cur.execute("""SELECT c.*, pc.data_carregamento AS programacao_data,
+                       pc.horario AS programacao_horario, pc.caminhao AS programacao_caminhao,
+                       pc.material AS programacao_material, COUNT(cp.pallet_id) AS quantidade_pallets,
                        COALESCE(SUM(p.peso_bruto), 0) AS peso_bruto
                        FROM cargas c
+                       LEFT JOIN programacao_carregamentos pc ON pc.id=c.programacao_id
                        LEFT JOIN carga_pallets cp ON cp.carga_id = c.id
                        LEFT JOIN pallets p ON p.id = cp.pallet_id
                        GROUP BY c.id ORDER BY c.numero DESC;""")
@@ -989,7 +1180,7 @@ def api_carga_excluir(carga_id):
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT numero FROM cargas WHERE id=?;", (carga_id,))
+        cur.execute("SELECT numero, programacao_id FROM cargas WHERE id=?;", (carga_id,))
         carga = cur.fetchone()
         if not carga:
             return jsonify({'ok': False, 'erro': 'Relação de carga não encontrada.'}), 404
@@ -999,6 +1190,8 @@ def api_carga_excluir(carga_id):
         cur.execute("DELETE FROM carga_itens WHERE carga_id=?;", (carga_id,))
         cur.execute("DELETE FROM carga_pallets WHERE carga_id=?;", (carga_id,))
         cur.execute("DELETE FROM cargas WHERE id=?;", (carga_id,))
+        if carga['programacao_id']:
+            cur.execute("UPDATE programacao_carregamentos SET status='programado' WHERE id=?", (carga['programacao_id'],))
         conn.commit()
         return jsonify({'ok': True, 'numero': carga['numero']})
     except Exception as err:
@@ -1087,13 +1280,13 @@ def api_romaneios_preview():
         pallets, erro = _validar_pallets_romaneio(conn, numeros)
         if erro:
             return jsonify({'ok': False, 'erro': erro[0]}), erro[1]
-        comparacao, _ = _comparar_carga_romaneio(conn, carga_id, pallets)
+        comparacao, carga = _comparar_carga_romaneio(conn, carga_id, pallets)
         if not comparacao:
             return jsonify({'ok': False, 'erro': 'Relação de carga não encontrada.'}), 404
         return jsonify({
             'ok': True, 'pallets': pallets,
             'clienteCodigo': pallets[0].get('cliente_codigo') if pallets else '',
-            'clienteNome': pallets[0].get('cliente_nome') if pallets else '',
+            'clienteNome': (carga.get('cliente') if carga else '') or (pallets[0].get('cliente_nome') if pallets else ''),
             'pesoLiquido': round(sum(p.get('peso_liquido') or 0 for p in pallets), 2),
             'pesoBruto': round(sum(p.get('peso_bruto') or 0 for p in pallets), 2),
             'volumes': sum(p.get('carreteis') or 0 for p in pallets),
@@ -1137,16 +1330,16 @@ def api_romaneios_criar():
         cur.execute("SELECT COALESCE(MAX(numero), 0) + 1 AS proximo FROM romaneios;")
         numero_romaneio = cur.fetchone()['proximo']
         cliente_codigo = pallets[0].get('cliente_codigo') if pallets else ''
-        cliente_nome = pallets[0].get('cliente_nome') if pallets else ''
+        cliente_nome = carga.get('cliente') or (pallets[0].get('cliente_nome') if pallets else '')
         peso_liquido = round(sum(p.get('peso_liquido') or 0 for p in pallets), 2)
         peso_bruto = round(sum(p.get('peso_bruto') or 0 for p in pallets), 2)
         registro = {
             'numero': numero_romaneio, 'data_hora': datetime.now().isoformat(),
             'data_envio': data_envio, 'cliente_codigo': cliente_codigo, 'cliente_nome': cliente_nome,
             'frete': frete, 'peso_liquido': peso_liquido, 'peso_bruto': peso_bruto,
-            'transportadora': str(d.get('transportadora') or '').strip(),
-            'veiculo': str(d.get('veiculo') or '').strip(),
-            'motorista': str(d.get('motorista') or '').strip(),
+            'transportadora': str(d.get('transportadora') or carga['transportadora'] or '').strip(),
+            'veiculo': str(d.get('veiculo') or carga['veiculo'] or '').strip(),
+            'motorista': str(d.get('motorista') or carga['motorista'] or '').strip(),
             'observacao': str(d.get('observacao') or '').strip(),
             'carga_numero': carga['numero'], 'aderencia_carga': comparacao['percentual'],
         }
@@ -1170,6 +1363,8 @@ def api_romaneios_criar():
                         [(romaneio_id, pallet_id) for pallet_id in ids])
         cur.execute("UPDATE romaneios SET arquivo_pdf = ? WHERE id = ?;", (nome_pdf, romaneio_id))
         cur.execute("UPDATE cargas SET status = 'finalizada' WHERE id = ?;", (carga_id,))
+        cur.execute("""UPDATE programacao_carregamentos SET status='concluido', romaneio_id=?
+                       WHERE id=(SELECT programacao_id FROM cargas WHERE id=?)""", (romaneio_id, carga_id))
         conn.commit()
         codigo = f"{numero_romaneio:04d}-{datetime.strptime(data_envio, '%Y-%m-%d'):%d%m%y}"
         return jsonify({'ok': True, 'id': romaneio_id, 'numero': numero_romaneio, 'codigo': codigo,
@@ -1244,6 +1439,8 @@ def api_romaneio_excluir(romaneio_id):
         cur.execute("DELETE FROM romaneios WHERE id=?;", (romaneio_id,))
         if romaneio['carga_id']:
             cur.execute("UPDATE cargas SET status='aberta' WHERE id=?;", (romaneio['carga_id'],))
+            cur.execute("""UPDATE programacao_carregamentos SET status='vinculado', romaneio_id=NULL
+                           WHERE id=(SELECT programacao_id FROM cargas WHERE id=?)""", (romaneio['carga_id'],))
         conn.commit()
         arquivo = os.path.basename(romaneio['arquivo_pdf'] or '')
         if arquivo:

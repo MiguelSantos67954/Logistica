@@ -9,6 +9,26 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 9A7 7 0 0 1 18.5 6L20 8M4 16l1.5 2A7 7 0 0 0 18 15"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4m8-4v4M3 10h18"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20 13 13 20l-9-9V4h7z"/><circle cx="8.5" cy="8.5" r="1.5"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+    <symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 6h11v11H3zM14 10h4l3 3v4h-7z"/><circle cx="7" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m5 7H2"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 4.5-9 4.5-9-4.5zM3 8v9l9 4 9-4V8M12 12v9"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h6a2 2 0 0 1 2 2v15a3 3 0 0 0-3-3H4zM20 4h-6a2 2 0 0 0-2 2v15a3 3 0 0 1 3-3h5z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2-1.7.7-1.9-.9-2.1 2.1.9 1.9-.7 1.7-2 .7v3l2 .7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2h3l.7-2 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z" transform="translate(2) scale(.83)"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M4 3h13l3 3v15H4zM8 3v6h8V3M8 21v-7h8v7"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-3M7 14h10v7H7z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V3h8v3m3 0-1 15H6L5 6M10 10v7m4-7v7"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 20 4-.8L19 8.2 15.8 5 4.8 16zM14 6l3 3"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3M8 15h8"/></symbol>
+  </svg>
 
   <!-- ================= LOGIN ================= -->
   <div id="view-login" class="login-view">
@@ -25,9 +45,12 @@
   </div>
 
   <div id="barraSessao" class="barra-sessao" hidden>
-    <span>👤 <strong id="usuarioAtualNome"></strong></span>
-    <button id="btnAdmin" type="button" hidden>⚙️ Administração</button>
-    <button id="btnSair" type="button">Sair</button>
+    <button id="btnUsuarioMenu" class="btn-usuario-menu" type="button" aria-expanded="false" aria-label="Abrir menu do usuário"><svg class="ui-icon"><use href="#i-user"/></svg></button>
+    <div id="menuUsuario" class="menu-usuario" hidden>
+      <span><svg class="ui-icon"><use href="#i-user"/></svg><strong id="usuarioAtualNome"></strong></span>
+      <button id="btnAdmin" type="button" hidden><svg class="ui-icon"><use href="#i-settings"/></svg> Administração</button>
+      <button id="btnSair" type="button">Sair</button>
+    </div>
   </div>
 
   <!-- ================= HOME ================= -->
@@ -47,7 +70,7 @@
       <div class="status-bar">
         <span class="status-indicator"></span>
         <span id="statusTexto">Carregando status...</span>
-        <button id="btnAtualizarErp" class="btn-refresh">🔄 Atualizar dados do ERP</button>
+        <button id="btnAtualizarErp" class="btn-refresh"><svg class="ui-icon"><use href="#i-refresh"/></svg> Atualizar dados do ERP</button>
       </div>
     </header>
 
@@ -59,37 +82,72 @@
       </section>
       <div class="modules-grid">
         <div class="module-card" data-modulo="identificacao-pallets">
-          <div class="module-card-top"><div class="module-icon">🏷️</div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
+          <div class="module-card-top"><div class="module-icon"><svg class="ui-icon"><use href="#i-tag"/></svg></div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
           <h3>Identificação de Pallets</h3>
-          <p>Emissão de packing lists para pallets de fios, painéis corrugados e kits.</p>
+          <p>Emissão de packing lists para pallets de fios e outros materiais acabados.</p>
           <button class="btn-enter" data-abrir="identificacao-pallets">Abrir módulo →</button>
         </div>
         <div class="module-card" data-modulo="relacao-carga">
-          <div class="module-card-top"><div class="module-icon">📋</div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
+          <div class="module-card-top"><div class="module-icon"><svg class="ui-icon"><use href="#i-list"/></svg></div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
           <h3>Relação de Carga</h3>
           <p>Visualize o estoque de produtos acabados e selecione os pallets que serão carregados.</p>
           <button class="btn-enter" data-abrir="relacao-carga">Montar relação →</button>
         </div>
         <div class="module-card" data-modulo="romaneio">
-          <div class="module-card-top"><div class="module-icon">🚛</div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
+          <div class="module-card-top"><div class="module-icon"><svg class="ui-icon"><use href="#i-truck"/></svg></div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
           <h3>Romaneio</h3>
           <p>Informe os packing lists, gere o romaneio e dê baixa automática nos pallets expedidos.</p>
           <button class="btn-enter" data-abrir="romaneio">Gerar romaneio →</button>
         </div>
+        <div class="module-card" data-modulo="analise-materiais">
+          <div class="module-card-top"><div class="module-icon"><svg class="ui-icon"><use href="#i-chart"/></svg></div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
+          <h3>Análise de Materiais Prontos</h3>
+          <p>Analise pallets com packing list por cliente, produto, peso, tipo e tempo em estoque.</p>
+          <button class="btn-enter" data-abrir="analise-materiais">Abrir análise →</button>
+        </div>
         <div class="module-card" data-modulo="programacao-carregamento">
-          <div class="module-card-top"><div class="module-icon">🛻</div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
+          <div class="module-card-top"><div class="module-icon"><svg class="ui-icon"><use href="#i-calendar"/></svg></div><span class="module-status">● &nbsp; MÓDULO ATIVO</span></div>
           <h3>Programação de Carregamento</h3>
           <p>Cadastre as cargas e acompanhe o cronograma diário em formato de linha do tempo ou calendário.</p>
           <span id="carregamentosHoje" class="loading-today-badge" hidden></span>
           <button class="btn-enter" data-abrir="programacao-carregamento">Acessar programação →</button>
         </div>
         <div class="module-card" id="cardAdministracao" data-modulo="administracao" hidden>
-          <div class="module-card-top"><div class="module-icon">🔐</div><span class="module-status">● &nbsp; SOMENTE ADMIN</span></div>
+          <div class="module-card-top"><div class="module-icon"><svg class="ui-icon"><use href="#i-lock"/></svg></div><span class="module-status">● &nbsp; SOMENTE ADMIN</span></div>
           <h3>Usuários e Auditoria</h3>
           <p>Cadastre usuários, defina acessos e consulte o histórico de atividades.</p>
           <button class="btn-enter" data-abrir="administracao">Administrar usuários →</button>
         </div>
       </div>
+    </main>
+  </div>
+
+  <!-- ================= ANALISE DE MATERIAIS ================= -->
+  <div id="view-analise-materiais" class="view-section" style="display:none">
+    <header class="app-header"><div class="brand">
+      <button id="btnVoltarAnalise" class="btn-back">← Portal Logística</button>
+      <div><h1>Análise de Materiais Prontos</h1><span class="brand-sub">PALLETS COM PACKING LIST</span></div>
+    </div></header>
+    <main class="modulo-container analise-container">
+      <section class="aba filtros-analise">
+        <label>Status<select id="analiseStatus"><option value="armazenado">Em estoque</option><option value="expedido">Expedidos</option><option value="">Todos</option></select></label>
+        <label>Tipo<select id="analiseModulo"><option value="">Todos</option><option value="fios">Fios</option><option value="painel">Outros Materiais</option></select></label>
+        <label>De<input id="analiseInicio" type="date"></label><label>Até<input id="analiseFim" type="date"></label>
+        <button id="btnAtualizarAnalise" class="btn-primary" type="button">Atualizar análise</button>
+      </section>
+      <div class="cards analise-kpis">
+        <div class="card"><span class="card-label">Packing lists</span><span class="card-valor" id="analisePallets">0</span></div>
+        <div class="card"><span class="card-label">Peso líquido</span><span class="card-valor" id="analisePesoLiquido">0 kg</span></div>
+        <div class="card highlight-card"><span class="card-label">Peso bruto</span><span class="card-valor" id="analisePesoBruto">0 kg</span></div>
+        <div class="card"><span class="card-label">Clientes / produtos</span><span class="card-valor card-valor-menor" id="analiseDiversidade">0 / 0</span></div>
+      </div>
+      <div id="analiseErro" class="aviso-erro" hidden></div>
+      <div class="analise-grid">
+        <section class="aba"><h2>Composição</h2><div id="analiseComposicao" class="barras-analise"></div></section>
+        <section class="aba"><h2>Tempo desde a identificação</h2><div id="analiseIdade" class="barras-analise"></div></section>
+      </div>
+      <section class="aba"><h2>Materiais por cliente</h2><div class="table-container"><table><thead><tr><th>Cliente</th><th>Packing lists</th><th>Peso líquido</th><th>Peso bruto</th></tr></thead><tbody id="analiseClientes"></tbody></table></div></section>
+      <section class="aba"><h2>Materiais por produto</h2><div class="table-container"><table><thead><tr><th>Código</th><th>Descrição</th><th>Quantidade</th><th>Packing lists</th></tr></thead><tbody id="analiseProdutos"></tbody></table></div></section>
     </main>
   </div>
 
@@ -113,37 +171,37 @@
       </section>
       <div class="ident-main-grid">
         <div class="module-card ident-card-principal" data-modulo="fios">
-          <div class="module-icon">🧵</div>
+          <div class="module-icon"><svg class="ui-icon"><use href="#i-tag"/></svg></div>
           <h3>Fios</h3>
           <p>Identificação de pallets de fios/condutores. Preencha apenas OP e Qtde — o resto vem do ERP.</p>
           <button class="btn-enter" data-abrir="fios">Abrir módulo Fios →</button>
         </div>
 
         <div class="module-card ident-card-principal" data-modulo="painel">
-          <div class="module-icon">📦</div>
-          <h3>Painel / Kits</h3>
-          <p>Identificação de pallets de painéis corrugados e kits.</p>
-          <button class="btn-enter" data-abrir="painel">Abrir módulo Painel/Kits →</button>
+          <div class="module-icon"><svg class="ui-icon"><use href="#i-box"/></svg></div>
+          <h3>Outros Materiais</h3>
+          <p>Identificação de pallets de materiais acabados que não pertencem à categoria de fios.</p>
+          <button class="btn-enter" data-abrir="painel">Abrir Outros Materiais →</button>
         </div>
       </div>
 
       <div class="ident-tools-grid" aria-label="Ferramentas de apoio">
         <div class="module-card secondary ident-card-apoio" data-modulo="historico">
-          <div class="module-icon">📚</div>
+          <div class="module-icon"><svg class="ui-icon"><use href="#i-book"/></svg></div>
           <h3>Histórico</h3>
           <p>Consulta de todos os pallets já identificados (equivalente à aba "Base").</p>
           <button class="btn-enter" data-abrir="historico">Ver histórico →</button>
         </div>
 
         <div class="module-card secondary ident-card-apoio" data-modulo="config">
-          <div class="module-icon">⚙️</div>
+          <div class="module-icon"><svg class="ui-icon"><use href="#i-settings"/></svg></div>
           <h3>Configurações</h3>
           <p>Medidas de palete (peso de tara) e abreviação de clientes usada no nome do PDF.</p>
           <button class="btn-enter" data-abrir="config">Configurações →</button>
         </div>
 
         <div class="module-card secondary ident-card-apoio" data-modulo="dados-erp">
-          <div class="module-icon">🗃️</div>
+          <div class="module-icon"><svg class="ui-icon"><use href="#i-database"/></svg></div>
           <h3>Dados do ERP</h3>
           <p>Consulte e edite localmente as linhas de OP carregadas do TOTVS.</p>
           <button class="btn-enter" data-abrir="dados-erp">Ver linhas →</button>
@@ -167,6 +225,7 @@
       <section class="aba">
         <h2>Dados da carga</h2>
         <div class="form-grid">
+          <label class="campo-carregamento-programado">Carregamento programado *<select id="cargaProgramacao" required><option value="">Selecione um carregamento programado</option></select></label>
           <label>Cliente<input id="cargaCliente" placeholder="Cliente da carga" /></label>
           <label>Transportadora<input id="cargaTransportadora" placeholder="Transportadora" /></label>
           <label>Veículo / placa<input id="cargaVeiculo" placeholder="Veículo ou placa" /></label>
@@ -180,10 +239,10 @@
       </section>
       <div class="filtros"><input id="buscaEstoque" placeholder="Buscar packing list, cliente, produto ou OP..." /><span class="contador">Estoque de produtos acabados</span></div>
       <div class="table-container"><table id="tabelaEstoque"><thead><tr><th><input id="selecionarTodosEstoque" type="checkbox" /></th><th>Packing List</th><th>Data</th><th>Cliente</th><th>Módulo</th><th>Produtos / OPs</th><th>Volumes</th><th>Peso Líq.</th><th>Peso Bruto</th></tr></thead><tbody></tbody></table></div>
-      <div class="acoes-modulo"><button id="btnSalvarRelacao" class="btn-primary">💾 Salvar Relação de Carga</button></div>
+      <div class="acoes-modulo"><button id="btnSalvarRelacao" class="btn-primary"><svg class="ui-icon"><use href="#i-save"/></svg> Salvar Relação de Carga</button></div>
       <section class="aba bloco-historico-cargas">
         <h2>Relações de carga salvas</h2>
-        <div class="table-container"><table id="tabelaHistoricoCargas"><thead><tr><th>Número</th><th>Data</th><th>Cliente</th><th>Transportadora</th><th>Veículo</th><th>Pallets</th><th>Peso bruto</th><th>Imprimir</th><th>Excluir</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-container"><table id="tabelaHistoricoCargas"><thead><tr><th>Número</th><th>Carregamento programado</th><th>Data</th><th>Cliente</th><th>Transportadora</th><th>Veículo</th><th>Pallets</th><th>Peso bruto</th><th>Imprimir</th><th>Excluir</th></tr></thead><tbody></tbody></table></div>
       </section>
     </main>
   </div>
@@ -217,7 +276,7 @@
         <label class="campo-bloco">Números dos packing lists<textarea id="romaneioNumeros" rows="5" placeholder="Ex.: 1025, 1026, 1027 (separe por vírgula, espaço ou linha)"></textarea></label>
         <div class="form-linha">
           <button id="btnConferirRomaneio" type="button" class="btn-clear">Conferir packing lists</button>
-          <button id="btnGerarRomaneio" type="button" class="btn-primary">🚛 Gerar Romaneio e Dar Baixa</button>
+          <button id="btnGerarRomaneio" type="button" class="btn-primary"><svg class="ui-icon"><use href="#i-truck"/></svg> Gerar Romaneio e Dar Baixa</button>
           <span id="romaneioAviso" class="aviso-erro" style="display:none"></span>
         </div>
         <label class="campo-bloco">Observações<textarea id="romaneioObservacao" rows="3" placeholder="Observações da expedição"></textarea></label>
@@ -248,7 +307,7 @@
         <select id="filtroModuloDadosErp">
           <option value="">Módulo (todos)</option>
           <option value="fios">Fios</option>
-          <option value="painel">Painel/Kits</option>
+          <option value="painel">Outros Materiais</option>
         </select>
         <span id="contadorDadosErp" class="contador"></span>
       </div>
@@ -327,9 +386,9 @@
       </div>
 
       <div class="acoes-modulo">
-        <button id="btnLimpar" type="button" class="btn-clear">🧹 Limpar</button>
-        <button id="btnGravar" type="button" class="btn-primary">💾 Gravar</button>
-        <button id="btnGravarImprimir" type="button" class="btn-primary">🖨️ Gravar e Imprimir</button>
+        <button id="btnLimpar" type="button" class="btn-clear">Limpar</button>
+        <button id="btnGravar" type="button" class="btn-primary"><svg class="ui-icon"><use href="#i-save"/></svg> Gravar</button>
+        <button id="btnGravarImprimir" type="button" class="btn-primary"><svg class="ui-icon"><use href="#i-print"/></svg> Gravar e Imprimir</button>
       </div>
     </main>
   </div>
@@ -348,7 +407,7 @@
         <select id="filtroModuloHistorico">
           <option value="">Módulo (todos)</option>
           <option value="fios">Fios</option>
-          <option value="painel">Painel/Kits</option>
+          <option value="painel">Outros Materiais</option>
         </select>
         <span id="contadorHistorico" class="contador"></span>
       </div>
@@ -416,8 +475,8 @@
         <h2>Teste de saída do PDF</h2>
         <p>Gera um packing list com dados padrão para conferir a pasta de saída e a impressão. O teste não é gravado no histórico.</p>
         <div class="form-linha">
-          <button id="btnGerarPdfTesteFios" class="btn-primary" type="button">🧪 Testar modelo Fios</button>
-          <button id="btnGerarPdfTestePainel" class="btn-primary" type="button">🧪 Testar modelo Painel/Kits</button>
+          <button id="btnGerarPdfTesteFios" class="btn-primary" type="button"><svg class="ui-icon"><use href="#i-flask"/></svg> Testar modelo Fios</button>
+          <button id="btnGerarPdfTestePainel" class="btn-primary" type="button"><svg class="ui-icon"><use href="#i-flask"/></svg> Testar modelo Outros Materiais</button>
         </div>
       </section>
     </main>
@@ -427,7 +486,7 @@
   <div id="view-administracao" class="view-section" style="display:none">
     <header class="app-header"><div class="brand"><button id="btnVoltarAdmin" class="btn-back">← Portal Logística</button><div><h1>Usuários e Auditoria</h1><span class="brand-sub">ADMINISTRAÇÃO DE ACESSOS</span></div></div></header>
     <main class="modulo-container admin-container">
-      <nav class="admin-abas"><button class="admin-aba-btn ativo" data-admin-aba="usuarios">👥 Usuários</button><button class="admin-aba-btn" data-admin-aba="auditoria">🕘 Histórico de atividades</button></nav>
+      <nav class="admin-abas"><button class="admin-aba-btn ativo" data-admin-aba="usuarios"><svg class="ui-icon"><use href="#i-user"/></svg> Usuários</button><button class="admin-aba-btn" data-admin-aba="auditoria"><svg class="ui-icon"><use href="#i-list"/></svg> Histórico de atividades</button></nav>
       <section id="admin-aba-usuarios" class="admin-aba aba">
         <div class="aba-header-title"><h2 id="tituloFormUsuario">Novo usuário</h2><p>Defina os módulos e as ações permitidas na Programação de Carregamento.</p></div>
         <form id="formUsuario" class="form-usuario">
@@ -436,7 +495,7 @@
           <label>Senha <small id="dicaSenhaUsuario">obrigatória para novo usuário</small><input id="usuarioSenha" type="password" autocomplete="new-password" /></label>
           <div class="usuario-flags"><label><input id="usuarioAtivo" type="checkbox" checked /> Usuário ativo</label><label><input id="usuarioAdministrador" type="checkbox" /> Administrador</label></div>
           <fieldset class="permissoes-grid"><legend>Acesso aos módulos</legend>
-            <label><input type="checkbox" data-permissao="identificacao_pallets" /> Identificação de Pallets</label><label><input type="checkbox" data-permissao="relacao_carga" /> Relação de Carga</label><label><input type="checkbox" data-permissao="romaneio" /> Romaneio</label><label><input type="checkbox" data-permissao="programacao_carregamento" /> Programação de Carregamento</label>
+            <label><input type="checkbox" data-permissao="identificacao_pallets" /> Identificação de Pallets</label><label><input type="checkbox" data-permissao="relacao_carga" /> Relação de Carga</label><label><input type="checkbox" data-permissao="romaneio" /> Romaneio</label><label><input type="checkbox" data-permissao="analise_materiais" /> Análise de Materiais</label><label><input type="checkbox" data-permissao="programacao_carregamento" /> Programação de Carregamento</label>
           </fieldset>
           <fieldset class="permissoes-grid"><legend>Bloqueios da Programação de Carregamento</legend>
             <label><input type="checkbox" data-permissao="carregamento_criar" /> Adicionar carregamentos</label><label><input type="checkbox" data-permissao="carregamento_editar" /> Editar carregamentos</label><label><input type="checkbox" data-permissao="carregamento_excluir" /> Excluir carregamentos</label>
@@ -460,10 +519,10 @@
       <div><h1>Programação de Carregamento</h1><span class="brand-sub">AGENDA OPERACIONAL DE EXPEDIÇÃO</span></div>
     </div></header>
     <nav class="carregamento-abas">
-      <button class="carregamento-aba-btn ativo" data-carregamento-aba="timeline">📊 Cargas do dia</button>
-      <button class="carregamento-aba-btn" data-carregamento-aba="calendario">📅 Calendário</button>
+      <button class="carregamento-aba-btn ativo" data-carregamento-aba="timeline">Cargas do dia</button>
+      <button class="carregamento-aba-btn" data-carregamento-aba="calendario">Calendário</button>
       <button class="carregamento-aba-btn" data-carregamento-aba="adicionar">➕ Adicionar carregamento</button>
-      <button class="carregamento-aba-btn" data-carregamento-aba="historico">🗂️ Histórico</button>
+      <button class="carregamento-aba-btn" data-carregamento-aba="historico">Histórico</button>
     </nav>
     <main class="modulo-container carregamento-container">
       <section id="carregamento-aba-timeline" class="carregamento-aba timeline-dashboard">
@@ -476,19 +535,26 @@
         <form id="formCarregamento" class="form-carregamento">
           <input type="hidden" id="carregamentoId" />
           <label>Data<input type="date" id="carregamentoData" required /></label><label>Horário<input type="time" id="carregamentoHorario" required /></label>
-          <label>Caminhão<input type="text" id="carregamentoCaminhao" placeholder="Ex.: ABC-1D23" required /></label><label>Material a carregar<input type="text" id="carregamentoMaterial" placeholder="Descreva o material" required /></label>
-          <label>Cliente destinatário<input type="text" id="carregamentoCliente" placeholder="Nome do cliente" required /></label><label class="form-full">Observação (opcional)<textarea id="carregamentoObservacao" rows="3"></textarea></label>
+          <label>Veículo / placa<input type="text" id="carregamentoCaminhao" placeholder="Ex.: ABC-1D23" required /></label><label>Material a carregar<input type="text" id="carregamentoMaterial" placeholder="Descreva o material" required /></label>
+          <label>Cliente destinatário<input type="text" id="carregamentoCliente" placeholder="Nome do cliente" required /></label><label>Transportadora<input type="text" id="carregamentoTransportadora" placeholder="Nome da transportadora" /></label>
+          <label>Motorista<input type="text" id="carregamentoMotorista" placeholder="Nome do motorista" /></label><label>Prioridade<select id="carregamentoPrioridade"><option>Normal</option><option>Alta</option><option>Baixa</option></select></label>
+          <label class="form-full">Observação (opcional)<textarea id="carregamentoObservacao" rows="3"></textarea></label>
           <div class="form-actions form-full"><button type="submit" class="btn-primary" id="btnSalvarCarregamento">Salvar carregamento</button><button type="button" class="btn-clear" id="btnCancelarEdicao" style="display:none">Cancelar edição</button></div>
         </form>
         <div class="lista-carregamentos"><div class="aba-header-title"><h2>Próximos carregamentos</h2></div><div id="listaCarregamentos"></div></div>
       </section>
-      <section id="carregamento-aba-historico" class="carregamento-aba" style="display:none"><div class="aba-header-title"><h2>Carregamentos antigos</h2><p>Consulte ou apague carregamentos com data anterior a hoje.</p></div><div id="listaCarregamentosAntigos" class="lista-carregamentos"></div></section>
+      <section id="carregamento-aba-historico" class="carregamento-aba" style="display:none"><div class="aba-header-title"><h2>Histórico de carregamentos</h2><p>Consulte carregamentos antigos e abra o romaneio dos carregamentos concluídos.</p></div><div id="listaCarregamentosAntigos" class="lista-carregamentos"></div></section>
       <section id="carregamento-aba-calendario" class="carregamento-aba" style="display:none">
         <div class="calendar-toolbar"><button type="button" class="btn-clear" id="btnMesAnterior">←</button><h2 id="tituloCalendario"></h2><button type="button" class="btn-clear" id="btnMesProximo">→</button><button type="button" class="btn-primary" id="btnHojeCalendario">Hoje</button></div>
-        <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div><div id="gradeCalendario" class="calendar-grid"></div><p class="calendar-legend">Clique em um carregamento para editar.</p>
+        <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div><div id="gradeCalendario" class="calendar-grid"></div><p class="calendar-legend">Clique em um carregamento para ver o resumo completo.</p>
       </section>
     </main>
   </div>
+
+  <dialog id="dialogResumoCarregamento" class="dialog-resumo-carregamento">
+    <div class="resumo-carga-header"><div><span class="timeline-eyebrow">Resumo de carga</span><h2 id="resumoCargaTitulo">Carregamento</h2><span id="resumoCargaStatus" class="status-carregamento"></span></div><button id="btnFecharResumoCarga" class="btn-fechar-resumo" type="button" aria-label="Fechar">✕</button></div>
+    <div id="resumoCargaConteudo" class="resumo-carga-conteudo"><div class="empty-state">Carregando informações...</div></div>
+  </dialog>
 
   <script src="app.js"></script>
 </body>

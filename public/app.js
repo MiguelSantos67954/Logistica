@@ -6,6 +6,7 @@ const views = {
   identificacao: document.getElementById('view-identificacao'),
   relacaoCarga: document.getElementById('view-relacao-carga'),
   romaneio: document.getElementById('view-romaneio'),
+  analiseMateriais: document.getElementById('view-analise-materiais'),
   modulo: document.getElementById('view-modulo'),
   historico: document.getElementById('view-historico'),
   config: document.getElementById('view-config'),
@@ -31,6 +32,7 @@ document.querySelectorAll('[data-abrir]').forEach(btn => {
     if (alvo === 'identificacao-pallets') mostrarView('identificacao');
     else if (alvo === 'relacao-carga') abrirRelacaoCarga();
     else if (alvo === 'romaneio') abrirRomaneio();
+    else if (alvo === 'analise-materiais') abrirAnaliseMateriais();
     else if (alvo === 'programacao-carregamento') abrirProgramacaoCarregamento();
     else if (alvo === 'administracao') abrirAdministracao();
     else if (alvo === 'fios' || alvo === 'painel') abrirModulo(alvo);
@@ -43,6 +45,7 @@ document.querySelectorAll('[data-abrir]').forEach(btn => {
 document.getElementById('btnVoltarIdentificacao').addEventListener('click', () => { mostrarView('home'); carregarStatus(); });
 document.getElementById('btnVoltarRelacaoCarga').addEventListener('click', () => mostrarView('home'));
 document.getElementById('btnVoltarRomaneio').addEventListener('click', () => mostrarView('home'));
+document.getElementById('btnVoltarAnalise').addEventListener('click', () => mostrarView('home'));
 document.getElementById('btnVoltarModulo').addEventListener('click', () => mostrarView('identificacao'));
 document.getElementById('btnVoltarHistorico').addEventListener('click', () => mostrarView('identificacao'));
 document.getElementById('btnVoltarConfig').addEventListener('click', () => mostrarView('identificacao'));
@@ -72,16 +75,16 @@ async function carregarStatus() {
 document.getElementById('btnAtualizarErp').addEventListener('click', async () => {
   const btn = document.getElementById('btnAtualizarErp');
   btn.disabled = true;
-  btn.textContent = '🔄 Atualizando...';
+  btn.innerHTML = '<svg class="ui-icon girando"><use href="#i-refresh"/></svg> Atualizando...';
   try {
     const r = await fetch('/api/refresh', { method: 'POST' }).then(res => res.json());
     if (!r.ok) throw new Error(r.erro || 'Falha ao atualizar.');
-    alert(`Atualização concluída!\nOrdens (fios): ${r.ordensFios}\nOrdens (painel): ${r.ordensPainel}\nClientes: ${r.clientes}\nTempo: ${r.duracaoSegundos}s`);
+    alert(`Atualização concluída!\nOrdens (fios): ${r.ordensFios}\nOrdens (outros materiais): ${r.ordensPainel}\nClientes: ${r.clientes}\nTempo: ${r.duracaoSegundos}s`);
   } catch (e) {
     alert('Erro ao atualizar dados do ERP: ' + e.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = '🔄 Atualizar dados do ERP';
+    btn.innerHTML = '<svg class="ui-icon"><use href="#i-refresh"/></svg> Atualizar dados do ERP';
     carregarStatus();
     if (paletesCache.length === 0) carregarPaletes();
   }
@@ -90,7 +93,7 @@ document.getElementById('btnAtualizarErp').addEventListener('click', async () =>
 // ==========================================
 // MODULO (FIOS / PAINEL)
 // ==========================================
-const titulos = { fios: 'Fios', painel: 'Painel / Kits' };
+const titulos = { fios: 'Fios', painel: 'Outros Materiais' };
 
 async function abrirModulo(modulo) {
   moduloAtual = modulo;
@@ -409,29 +412,48 @@ function limparFormulario(limparOpTambem) {
 // RELACAO DE CARGA / ESTOQUE DE PRODUTO ACABADO
 // ==========================================
 let estoquePallets = [];
+let programacoesCarga = [];
 
 async function abrirRelacaoCarga() {
   mostrarView('relacaoCarga');
-  await Promise.all([carregarEstoquePallets(), carregarHistoricoCargas()]);
+  await Promise.all([carregarEstoquePallets(), carregarHistoricoCargas(), carregarProgramacoesRelacao()]);
 }
+
+async function carregarProgramacoesRelacao() {
+  const select = document.getElementById('cargaProgramacao'), atual = select.value;
+  const resposta = await fetch('/api/carregamentos?status=disponivel'), dados = await resposta.json();
+  if (!resposta.ok) { select.innerHTML = '<option value="">Não foi possível carregar os agendamentos</option>'; return; }
+  programacoesCarga = dados;
+  select.innerHTML = '<option value="">Selecione um carregamento programado</option>' + dados.map(c => `<option value="${c.id}">${cargaData(c.data_carregamento)} às ${cargaHtml(c.horario)} — ${cargaHtml(c.caminhao)} — ${cargaHtml(c.cliente)} — ${cargaHtml(c.material)}</option>`).join('');
+  if (dados.some(c => String(c.id) === atual)) select.value = atual;
+}
+document.getElementById('cargaProgramacao').addEventListener('change', e => {
+  const programacao = programacoesCarga.find(c => String(c.id) === e.target.value); if (!programacao) return;
+  document.getElementById('cargaCliente').value = programacao.cliente || '';
+  document.getElementById('cargaTransportadora').value = programacao.transportadora || '';
+  document.getElementById('cargaVeiculo').value = programacao.caminhao || '';
+  document.getElementById('cargaMotorista').value = programacao.motorista || '';
+  document.getElementById('cargaPrioridade').value = programacao.prioridade || 'Normal';
+});
 
 async function carregarHistoricoCargas() {
   const tbody = document.querySelector('#tabelaHistoricoCargas tbody');
-  tbody.innerHTML = '<tr><td colspan="9">Carregando...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10">Carregando...</td></tr>';
   try {
     const resp = await fetch('/api/cargas');
     const cargas = await resp.json();
     if (!resp.ok) throw new Error(cargas.erro || 'Não foi possível consultar as relações.');
     tbody.innerHTML = cargas.map(c => `<tr>
       <td><strong>${String(c.numero).padStart(5, '0')}</strong></td>
+      <td>${c.programacao_data ? `${cargaData(c.programacao_data)} ${cargaHtml(c.programacao_horario || '')}<br><small>${cargaHtml(c.programacao_caminhao || '')}</small>` : '—'}</td>
       <td>${new Date(c.data_hora).toLocaleString('pt-BR')}</td>
       <td>${escaparHtml(c.cliente || '—')}</td><td>${escaparHtml(c.transportadora || '—')}</td>
       <td>${escaparHtml(c.veiculo || '—')}</td><td>${c.quantidade_pallets || 0}</td>
       <td>${Number(c.peso_bruto || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg</td>
-      <td><a class="btn-clear" href="/api/cargas/${c.id}/pdf" target="_blank">🖨️ Abrir PDF</a></td>
+      <td><a class="btn-clear" href="/api/cargas/${c.id}/pdf" target="_blank"><svg class="ui-icon"><use href="#i-print"/></svg> Abrir PDF</a></td>
       <td><button class="btn-excluir-carga" data-id="${c.id}" data-numero="${c.numero}">Excluir</button></td>
-    </tr>`).join('') || '<tr><td colspan="9">Nenhuma relação de carga salva.</td></tr>';
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="9">${escaparHtml(e.message)}</td></tr>`; }
+    </tr>`).join('') || '<tr><td colspan="10">Nenhuma relação de carga salva.</td></tr>';
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="10">${escaparHtml(e.message)}</td></tr>`; }
 }
 
 document.querySelector('#tabelaHistoricoCargas tbody').addEventListener('click', async e => {
@@ -550,6 +572,7 @@ document.getElementById('btnSalvarRelacao').addEventListener('click', async () =
     const resp = await fetch('/api/cargas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        programacaoId: document.getElementById('cargaProgramacao').value,
         palletIds: palletsSelecionados(), cliente: document.getElementById('cargaCliente').value,
         transportadora: document.getElementById('cargaTransportadora').value,
         veiculo: document.getElementById('cargaVeiculo').value, motorista: document.getElementById('cargaMotorista').value,
@@ -559,7 +582,8 @@ document.getElementById('btnSalvarRelacao').addEventListener('click', async () =
     const dados = await resp.json();
     if (!resp.ok) throw new Error(dados.erro || 'Não foi possível salvar a relação.');
     alert(`Relação de Carga Nº ${String(dados.numero).padStart(5, '0')} salva com ${dados.quantidadePallets} pallet(s) e ${dados.quantidadeItensManuais} item(ns) manual(is).`);
-    await carregarHistoricoCargas();
+    document.getElementById('cargaProgramacao').value = '';
+    await Promise.all([carregarHistoricoCargas(), carregarProgramacoesRelacao()]);
   } catch (e) { alert(e.message); }
   finally { btn.disabled = false; }
 });
@@ -568,6 +592,7 @@ document.getElementById('btnSalvarRelacao').addEventListener('click', async () =
 // ROMANEIO / BAIXA DE PALLETS
 // ==========================================
 let previewRomaneioValido = false;
+let relacoesRomaneio = [];
 
 function textoAderencia(valor) {
   const n = Number(valor || 0);
@@ -591,6 +616,7 @@ async function carregarRelacoesRomaneio() {
   const select = document.getElementById('romaneioCarga');
   const atual = select.value;
   const cargas = await fetch('/api/cargas').then(r => r.json());
+  relacoesRomaneio = cargas;
   select.innerHTML = '<option value="">Selecione uma relação</option>' + cargas
     .filter(c => c.status !== 'finalizada')
     .map(c => `<option value="${c.id}">Nº ${String(c.numero).padStart(5, '0')} — ${escaparHtml(c.cliente || 'Sem cliente')} (${c.quantidade_pallets || 0} pallets)</option>`).join('');
@@ -708,10 +734,12 @@ function ativarAbaCarregamento(nome) {
 }
 document.querySelectorAll('.carregamento-aba-btn').forEach(b => b.addEventListener('click', () => ativarAbaCarregamento(b.dataset.carregamentoAba)));
 
-async function buscarCarregamentos(inicio = '', fim = '') {
+async function buscarCarregamentos(inicio = '', fim = '', opcoes = {}) {
   const params = new URLSearchParams();
   if (inicio) params.set('inicio', inicio);
   if (fim) params.set('fim', fim);
+  if (opcoes.status) params.set('status', opcoes.status);
+  if (opcoes.historico) params.set('historico', '1');
   const resposta = await fetch(`/api/carregamentos?${params}`), dados = await resposta.json();
   if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível carregar os carregamentos.');
   return dados;
@@ -727,7 +755,7 @@ async function carregarTimelineCargas() {
   try {
     carregamentos = (await buscarCarregamentos(inicioISO, fimISO)).sort((a,b) => `${a.data_carregamento} ${a.horario}`.localeCompare(`${b.data_carregamento} ${b.horario}`));
     const agora = new Date(), hoje = cargaISO(agora), hora = agora.toTimeString().slice(0,5);
-    const proxima = carregamentos.find(c => c.data_carregamento > hoje || (c.data_carregamento === hoje && c.horario >= hora));
+    const proxima = carregamentos.find(c => c.status !== 'concluido' && (c.data_carregamento > hoje || (c.data_carregamento === hoje && c.horario >= hora)));
     document.getElementById('timelineTotal').textContent = carregamentos.length;
     document.getElementById('timelineClientes').textContent = new Set(carregamentos.map(c => c.cliente.trim().toUpperCase())).size;
     document.getElementById('timelineProxima').textContent = proxima?.horario || '—';
@@ -738,9 +766,14 @@ async function carregarTimelineCargas() {
       const iso = cargaISO(d), linhas = carregamentos.filter(c => c.data_carregamento === iso);
       const rotulo = iso === hoje ? 'Hoje' : iso === inicioISO ? 'Ontem' : d.toLocaleDateString('pt-BR', {weekday:'long'});
       const eventos = linhas.length ? linhas.map(c => {
-        const passou = c.data_carregamento < hoje || (c.data_carregamento === hoje && c.horario < hora);
-        const status = passou ? 'realizada' : (proxima && Number(c.id) === Number(proxima.id) ? 'proxima' : 'programada');
-        return `<article class="timeline-item timeline-${status}" data-editar-carregamento="${c.id}"><div class="timeline-hora"><strong>${cargaHtml(c.horario)}</strong><span>${status === 'realizada' ? 'Horário encerrado' : status === 'proxima' ? 'Próxima carga' : 'Programada'}</span></div><div class="timeline-marker"><i></i></div><div class="timeline-card"><div class="timeline-card-top"><strong>${cargaHtml(c.caminhao)}</strong><span>${cargaHtml(c.cliente)}</span></div><h4>${cargaHtml(c.material)}</h4>${c.observacao ? `<p>${cargaHtml(c.observacao)}</p>` : ''}</div></article>`;
+        const horarioCarga = new Date(`${c.data_carregamento}T${c.horario}:00`);
+        const minutosRestantes = (horarioCarga.getTime() - agora.getTime()) / 60000;
+        let status = 'programada', statusTexto = 'Programada';
+        if (c.status === 'concluido') { status = 'concluida'; statusTexto = 'Concluído'; }
+        else if (minutosRestantes < 0) { status = 'atrasada'; statusTexto = 'Em atraso'; }
+        else if (minutosRestantes <= 60) { status = 'quase-atrasada'; statusTexto = 'Quase em atraso'; }
+        else if (proxima && Number(c.id) === Number(proxima.id)) { status = 'proxima'; statusTexto = 'Próxima carga'; }
+        return `<article class="timeline-item timeline-${status}" data-resumo-carregamento="${c.id}"><div class="timeline-hora"><strong>${cargaHtml(c.horario)}</strong><span>${statusTexto}</span></div><div class="timeline-marker"><i></i></div><div class="timeline-card"><div class="timeline-card-top"><strong>${cargaHtml(c.caminhao)}</strong><span>${cargaHtml(c.cliente)}</span></div><h4>${cargaHtml(c.material)}</h4>${c.observacao ? `<p>${cargaHtml(c.observacao)}</p>` : ''}</div></article>`;
       }).join('') : '<div class="timeline-day-empty">Nenhuma carga programada</div>';
       return `<div class="timeline-date-divider ${iso === hoje ? 'timeline-date-today' : ''}"><strong>${cargaHtml(rotulo)}</strong><span>${cargaData(iso)}</span></div>${eventos}`;
     }).join('');
@@ -748,16 +781,18 @@ async function carregarTimelineCargas() {
 }
 
 function cartaoCarregamento(c, editar = true) {
-  return `<article class="carregamento-item"><div class="carregamento-data"><strong>${cargaData(c.data_carregamento)}</strong><span>${cargaHtml(c.horario)}</span></div><div class="carregamento-info"><strong>${cargaHtml(c.caminhao)}</strong><span>${cargaHtml(c.material)} · ${cargaHtml(c.cliente)}</span>${c.observacao ? `<small>${cargaHtml(c.observacao)}</small>` : ''}</div><div class="carregamento-acoes">${editar && pode('carregamento_editar') ? `<button type="button" class="btn-icon" data-editar-carregamento="${c.id}" title="Editar">✏️</button>` : ''}${pode('carregamento_excluir') ? `<button type="button" class="btn-icon danger" data-excluir-carregamento="${c.id}" title="Excluir">🗑️</button>` : ''}</div></article>`;
+  const status = c.status || 'programado', rotulos = {programado:'Programado', vinculado:'Relação criada', concluido:'Concluído'};
+  const linkRomaneio = c.romaneio_id && pode('romaneio') ? `<a class="btn-clear" href="/api/romaneios/${c.romaneio_id}/pdf" target="_blank">Abrir Romaneio ${c.romaneio_numero || ''}</a>` : '';
+  return `<article class="carregamento-item" data-resumo-carregamento="${c.id}"><div class="carregamento-data"><strong>${cargaData(c.data_carregamento)}</strong><span>${cargaHtml(c.horario)}</span></div><div class="carregamento-info"><strong>${cargaHtml(c.caminhao)}</strong><span>${cargaHtml(c.material)} · ${cargaHtml(c.cliente)}</span><small class="status-carregamento status-${status}">${rotulos[status] || status}</small>${c.observacao ? `<small>${cargaHtml(c.observacao)}</small>` : ''}</div><div class="carregamento-acoes">${linkRomaneio}${editar && status === 'programado' && pode('carregamento_editar') ? `<button type="button" class="btn-icon" data-editar-carregamento="${c.id}" title="Editar"><svg class="ui-icon"><use href="#i-edit"/></svg></button>` : ''}${status === 'programado' && pode('carregamento_excluir') ? `<button type="button" class="btn-icon danger" data-excluir-carregamento="${c.id}" title="Excluir"><svg class="ui-icon"><use href="#i-trash"/></svg></button>` : ''}</div></article>`;
 }
 async function carregarListaCarregamentos() {
   const lista = document.getElementById('listaCarregamentos');
-  try { carregamentos = await buscarCarregamentos(cargaISO(new Date())); lista.innerHTML = carregamentos.length ? carregamentos.map(c => cartaoCarregamento(c)).join('') : '<div class="empty-state">Nenhum carregamento programado a partir de hoje.</div>'; }
+  try { carregamentos = await buscarCarregamentos(cargaISO(new Date()), '', {status:'ativo'}); lista.innerHTML = carregamentos.length ? carregamentos.map(c => cartaoCarregamento(c)).join('') : '<div class="empty-state">Nenhum carregamento programado a partir de hoje.</div>'; }
   catch (erro) { lista.innerHTML = `<div class="empty-state">${cargaHtml(erro.message)}</div>`; }
 }
 async function carregarCarregamentosAntigos() {
-  const lista = document.getElementById('listaCarregamentosAntigos'), ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
-  try { carregamentos = (await buscarCarregamentos('', cargaISO(ontem))).reverse(); lista.innerHTML = carregamentos.length ? carregamentos.map(c => cartaoCarregamento(c, false)).join('') : '<div class="empty-state">Nenhum carregamento antigo encontrado.</div>'; }
+  const lista = document.getElementById('listaCarregamentosAntigos');
+  try { carregamentos = (await buscarCarregamentos('', '', {historico:true})).reverse(); lista.innerHTML = carregamentos.length ? carregamentos.map(c => cartaoCarregamento(c, false)).join('') : '<div class="empty-state">Nenhum carregamento antigo encontrado.</div>'; }
   catch (erro) { lista.innerHTML = `<div class="empty-state">${cargaHtml(erro.message)}</div>`; }
 }
 function limparFormularioCarregamento() {
@@ -768,7 +803,7 @@ function editarCarregamento(id) {
   if (!pode('carregamento_editar')) return alert('Você não tem permissão para editar carregamentos.');
   const c = carregamentos.find(item => Number(item.id) === Number(id)); if (!c) return;
   document.getElementById('carregamentoId').value = c.id;
-  for (const [sufixo, chave] of Object.entries({Data:'data_carregamento',Horario:'horario',Caminhao:'caminhao',Material:'material',Cliente:'cliente',Observacao:'observacao'})) document.getElementById(`carregamento${sufixo}`).value = c[chave] || '';
+  for (const [sufixo, chave] of Object.entries({Data:'data_carregamento',Horario:'horario',Caminhao:'caminhao',Material:'material',Cliente:'cliente',Transportadora:'transportadora',Motorista:'motorista',Prioridade:'prioridade',Observacao:'observacao'})) document.getElementById(`carregamento${sufixo}`).value = c[chave] || '';
   document.getElementById('tituloFormularioCarregamento').textContent = 'Editar carregamento'; document.getElementById('btnSalvarCarregamento').textContent = 'Salvar alterações'; document.getElementById('btnCancelarEdicao').style.display = 'inline-block'; ativarAbaCarregamento('adicionar');
 }
 async function excluirCarregamento(id) {
@@ -781,18 +816,54 @@ async function excluirCarregamento(id) {
 document.getElementById('formCarregamento').addEventListener('submit', async e => {
   e.preventDefault(); const id = document.getElementById('carregamentoId').value;
   if (!pode(id ? 'carregamento_editar' : 'carregamento_criar')) return alert('Você não tem permissão para esta ação.');
-  const dados = {data_carregamento:document.getElementById('carregamentoData').value, horario:document.getElementById('carregamentoHorario').value, caminhao:document.getElementById('carregamentoCaminhao').value.trim(), material:document.getElementById('carregamentoMaterial').value.trim(), cliente:document.getElementById('carregamentoCliente').value.trim(), observacao:document.getElementById('carregamentoObservacao').value.trim()};
+  const dados = {data_carregamento:document.getElementById('carregamentoData').value, horario:document.getElementById('carregamentoHorario').value, caminhao:document.getElementById('carregamentoCaminhao').value.trim(), material:document.getElementById('carregamentoMaterial').value.trim(), cliente:document.getElementById('carregamentoCliente').value.trim(), transportadora:document.getElementById('carregamentoTransportadora').value.trim(), motorista:document.getElementById('carregamentoMotorista').value.trim(), prioridade:document.getElementById('carregamentoPrioridade').value, observacao:document.getElementById('carregamentoObservacao').value.trim()};
   try { const resposta = await fetch(id ? `/api/carregamentos/${id}` : '/api/carregamentos', {method:id?'PUT':'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(dados)}), resultado = await resposta.json(); if (!resposta.ok) throw new Error(resultado.erro || 'Não foi possível salvar.'); limparFormularioCarregamento(); await carregarListaCarregamentos(); carregarStatus(); }
   catch (erro) { alert(erro.message); }
 });
 document.getElementById('btnCancelarEdicao').addEventListener('click', limparFormularioCarregamento);
-for (const id of ['listaCarregamentos','listaCarregamentosAntigos','timelineCargas','gradeCalendario']) document.getElementById(id).addEventListener('click', e => { const editar = e.target.closest('[data-editar-carregamento]'), excluir = e.target.closest('[data-excluir-carregamento]'); if (editar) editarCarregamento(editar.dataset.editarCarregamento); if (excluir) excluirCarregamento(excluir.dataset.excluirCarregamento); });
+for (const id of ['listaCarregamentos','listaCarregamentosAntigos','timelineCargas','gradeCalendario']) document.getElementById(id).addEventListener('click', e => {
+  const editar = e.target.closest('[data-editar-carregamento]'), excluir = e.target.closest('[data-excluir-carregamento]'), resumo = e.target.closest('[data-resumo-carregamento]');
+  if (editar) return editarCarregamento(editar.dataset.editarCarregamento);
+  if (excluir) return excluirCarregamento(excluir.dataset.excluirCarregamento);
+  const interativo = e.target.closest('a,button');
+  if (interativo && !interativo.classList.contains('calendar-event')) return;
+  if (resumo) abrirResumoCarregamento(resumo.dataset.resumoCarregamento);
+});
 document.getElementById('timelineData').addEventListener('change', carregarTimelineCargas);
+
+function campoResumo(rotulo, valor) {
+  return `<div class="resumo-campo"><span>${rotulo}</span><strong>${cargaHtml(valor || '—')}</strong></div>`;
+}
+
+async function abrirResumoCarregamento(id) {
+  const dialog = document.getElementById('dialogResumoCarregamento'), conteudo = document.getElementById('resumoCargaConteudo');
+  conteudo.innerHTML = '<div class="empty-state">Carregando todas as informações...</div>';
+  if (!dialog.open) dialog.showModal();
+  try {
+    const resposta = await fetch(`/api/carregamentos/${id}/resumo`), dados = await resposta.json();
+    if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível carregar o resumo.');
+    const p = dados.programacao, c = dados.relacaoCarga, r = dados.romaneio;
+    const rotulos = {programado:'Programado', vinculado:'Relação criada', concluido:'Concluído'};
+    document.getElementById('resumoCargaTitulo').textContent = `${p.caminhao} — ${p.cliente}`;
+    const status = document.getElementById('resumoCargaStatus'); status.textContent = rotulos[p.status] || p.status; status.className = `status-carregamento status-${p.status}`;
+    const pallets = dados.pallets.length ? `<div class="resumo-pallets">${dados.pallets.map(item => `<span>PL ${String(item.numero).padStart(5,'0')} · ${cargaHtml(item.modulo)} · ${Number(item.peso_bruto || 0).toLocaleString('pt-BR',{minimumFractionDigits:2})} kg</span>`).join('')}</div>` : '<div class="empty-state">Nenhum packing list vinculado.</div>';
+    const itensManuais = dados.itensManuais?.length ? `<h4>Itens manuais</h4><div class="resumo-pallets">${dados.itensManuais.map(item => `<span>${cargaHtml(item.codigo_produto)} · ${cargaHtml(item.descricao || '')} · ${Number(item.quantidade).toLocaleString('pt-BR')}</span>`).join('')}</div>` : '';
+    const relacao = c ? `<section class="resumo-secao"><div class="resumo-secao-titulo"><h3>Relação de Carga Nº ${String(c.numero).padStart(5,'0')}</h3>${pode('relacao_carga') ? `<a class="btn-clear" href="/api/cargas/${c.id}/pdf" target="_blank">Abrir PDF</a>` : ''}</div><div class="resumo-grid">${campoResumo('Criada em',new Date(c.data_hora).toLocaleString('pt-BR'))}${campoResumo('Status',c.status)}${campoResumo('Transportadora',c.transportadora)}${campoResumo('Veículo / placa',c.veiculo)}${campoResumo('Motorista',c.motorista)}${campoResumo('Prioridade',c.prioridade)}${campoResumo('Pallets',c.quantidade_pallets)}${campoResumo('Peso líquido',`${Number(c.peso_liquido||0).toLocaleString('pt-BR',{minimumFractionDigits:2})} kg`)}${campoResumo('Peso bruto',`${Number(c.peso_bruto||0).toLocaleString('pt-BR',{minimumFractionDigits:2})} kg`)}${campoResumo('Observação',c.observacao)}</div><h4>Packing lists</h4>${pallets}${itensManuais}</section>` : '<section class="resumo-secao"><h3>Relação de Carga</h3><div class="empty-state">Ainda não existe uma relação vinculada a este carregamento.</div></section>';
+    let codigoRomaneio = '';
+    if (r) { const data = r.data_envio || String(r.data_hora || '').slice(0,10), partes = data.split('-'); codigoRomaneio = `${String(r.numero).padStart(4,'0')}-${partes.length === 3 ? partes[2]+partes[1]+partes[0].slice(2) : ''}`; }
+    const romaneio = r ? `<section class="resumo-secao"><div class="resumo-secao-titulo"><h3>Romaneio ${cargaHtml(codigoRomaneio)}</h3>${pode('romaneio') ? `<a class="btn-primary" href="/api/romaneios/${r.id}/pdf" target="_blank">Abrir Romaneio</a>` : ''}</div><div class="resumo-grid">${campoResumo('Data de envio',cargaData(r.data_envio))}${campoResumo('Transportadora',r.transportadora)}${campoResumo('Veículo / placa',r.veiculo)}${campoResumo('Motorista',r.motorista)}${campoResumo('Frete',r.frete)}${campoResumo('Pallets',r.quantidade_pallets)}${campoResumo('Peso líquido',`${Number(r.peso_liquido||0).toLocaleString('pt-BR',{minimumFractionDigits:2})} kg`)}${campoResumo('Peso bruto',`${Number(r.peso_bruto||0).toLocaleString('pt-BR',{minimumFractionDigits:2})} kg`)}${campoResumo('Observação',r.observacao)}</div></section>` : '<section class="resumo-secao"><h3>Romaneio</h3><div class="empty-state">O romaneio ainda não foi emitido.</div></section>';
+    const fotosCarga = r ? dados.fotos.filter(f => f.categoria === 'carga') : [];
+    const fotos = `<section class="resumo-secao"><h3>Fotos do caminhão / carga completa</h3>${fotosCarga.length ? `<div class="resumo-fotos">${fotosCarga.map(f => `<a href="/api/romaneios/${r.id}/fotos/${f.id}" target="_blank"><img src="/api/romaneios/${r.id}/fotos/${f.id}" alt="Foto do caminhão ou carga completa" loading="lazy"></a>`).join('')}</div>` : '<div class="empty-state">Nenhuma foto do caminhão foi adicionada a este romaneio.</div>'}</section>`;
+    conteudo.innerHTML = `<section class="resumo-secao resumo-programacao"><h3>Dados programados</h3><div class="resumo-grid">${campoResumo('Data',cargaData(p.data_carregamento))}${campoResumo('Horário',p.horario)}${campoResumo('Veículo / placa',p.caminhao)}${campoResumo('Cliente',p.cliente)}${campoResumo('Transportadora',p.transportadora)}${campoResumo('Motorista',p.motorista)}${campoResumo('Prioridade',p.prioridade)}${campoResumo('Material',p.material)}${campoResumo('Observação',p.observacao)}</div></section>${relacao}${romaneio}${fotos}`;
+  } catch (erro) { conteudo.innerHTML = `<div class="empty-state">${cargaHtml(erro.message)}</div>`; }
+}
+document.getElementById('btnFecharResumoCarga').addEventListener('click', () => document.getElementById('dialogResumoCarregamento').close());
+document.getElementById('dialogResumoCarregamento').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
 async function carregarCalendarioCargas() {
   const primeiro = new Date(mesCalendarioCarga.getFullYear(), mesCalendarioCarga.getMonth(), 1), ultimo = new Date(mesCalendarioCarga.getFullYear(), mesCalendarioCarga.getMonth() + 1, 0);
   document.getElementById('tituloCalendario').textContent = primeiro.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
-  try { carregamentos = await buscarCarregamentos(cargaISO(primeiro), cargaISO(ultimo)); const dias = Array.from({length:primeiro.getDay()}, () => '<div class="calendar-day calendar-day-empty"></div>'); for (let dia=1; dia<=ultimo.getDate(); dia++) { const iso = cargaISO(new Date(primeiro.getFullYear(), primeiro.getMonth(), dia)), eventos = carregamentos.filter(c => c.data_carregamento === iso); dias.push(`<div class="calendar-day ${iso === cargaISO(new Date()) ? 'calendar-today' : ''}"><span class="calendar-date">${dia}</span><div class="calendar-events">${eventos.map(c => `<button class="calendar-event" data-editar-carregamento="${c.id}"><strong>${cargaHtml(c.horario)} · ${cargaHtml(c.caminhao)}</strong><span>${cargaHtml(c.material)}</span><small>${cargaHtml(c.cliente)}</small></button>`).join('')}</div></div>`); } document.getElementById('gradeCalendario').innerHTML = dias.join(''); }
+  try { carregamentos = await buscarCarregamentos(cargaISO(primeiro), cargaISO(ultimo)); const dias = Array.from({length:primeiro.getDay()}, () => '<div class="calendar-day calendar-day-empty"></div>'); for (let dia=1; dia<=ultimo.getDate(); dia++) { const iso = cargaISO(new Date(primeiro.getFullYear(), primeiro.getMonth(), dia)), eventos = carregamentos.filter(c => c.data_carregamento === iso); dias.push(`<div class="calendar-day ${iso === cargaISO(new Date()) ? 'calendar-today' : ''}"><span class="calendar-date">${dia}</span><div class="calendar-events">${eventos.map(c => `<button class="calendar-event" data-resumo-carregamento="${c.id}"><strong>${cargaHtml(c.horario)} · ${cargaHtml(c.caminhao)}</strong><span>${cargaHtml(c.material)}</span><small>${cargaHtml(c.cliente)}</small></button>`).join('')}</div></div>`); } document.getElementById('gradeCalendario').innerHTML = dias.join(''); }
   catch (erro) { document.getElementById('gradeCalendario').innerHTML = `<div class="empty-state">${cargaHtml(erro.message)}</div>`; }
 }
 document.getElementById('btnMesAnterior').addEventListener('click', () => { mesCalendarioCarga = new Date(mesCalendarioCarga.getFullYear(), mesCalendarioCarga.getMonth()-1, 1); carregarCalendarioCargas(); });
@@ -800,7 +871,14 @@ document.getElementById('btnMesProximo').addEventListener('click', () => { mesCa
 document.getElementById('btnHojeCalendario').addEventListener('click', () => { mesCalendarioCarga = new Date(new Date().getFullYear(), new Date().getMonth(), 1); carregarCalendarioCargas(); });
 
 document.getElementById('romaneioNumeros').addEventListener('input', limparPreviewRomaneio);
-document.getElementById('romaneioCarga').addEventListener('change', limparPreviewRomaneio);
+document.getElementById('romaneioCarga').addEventListener('change', e => {
+  limparPreviewRomaneio();
+  const carga = relacoesRomaneio.find(item => String(item.id) === e.target.value); if (!carga) return;
+  document.getElementById('romaneioCliente').textContent = carga.cliente || '—';
+  document.getElementById('romaneioTransportadora').value = carga.transportadora || '';
+  document.getElementById('romaneioVeiculo').value = carga.veiculo || '';
+  document.getElementById('romaneioMotorista').value = carga.motorista || '';
+});
 document.getElementById('btnConferirRomaneio').addEventListener('click', conferirRomaneio);
 
 document.getElementById('btnGerarRomaneio').addEventListener('click', async () => {
@@ -932,10 +1010,10 @@ async function carregarDadosErp() {
     document.getElementById('contadorDadosErp').textContent = `${dados.total} linha(s)${complemento}`;
     tbody.innerHTML = dados.linhas.map(l => `
       <tr data-modulo="${escaparHtml(l.modulo)}" data-op-original="${escaparHtml(l.op)}">
-        <td>${l.modulo === 'fios' ? 'Fios' : 'Painel/Kits'}</td>
+        <td>${l.modulo === 'fios' ? 'Fios' : 'Outros Materiais'}</td>
         <td><input class="tabela-input campo-op-erp" value="${escaparHtml(l.op)}" /></td>
         <td><input class="tabela-input campo-oc-erp" value="${escaparHtml(l.oc)}" /></td>
-        <td><input class="tabela-input campo-pedido-erp" value="${escaparHtml(l.pedido)}" /></td>
+        <td><div class="pedido-lookup"><input class="tabela-input campo-pedido-erp" value="${escaparHtml(l.pedido)}" /><button type="button" class="btn-buscar-pedido" title="Buscar dados pelo pedido">Buscar</button></div></td>
         <td><input class="tabela-input campo-produto-erp" value="${escaparHtml(l.codigo_produto)}" /></td>
         <td><input class="tabela-input campo-descricao-erp" value="${escaparHtml(l.descricao)}" /></td>
         <td><input class="tabela-input campo-cliente-erp" value="${escaparHtml(l.codigo_cliente)}" /></td>
@@ -949,6 +1027,42 @@ async function carregarDadosErp() {
 
 document.getElementById('buscaDadosErp').addEventListener('input', debounce(carregarDadosErp, 300));
 document.getElementById('filtroModuloDadosErp').addEventListener('change', carregarDadosErp);
+
+function preencherLinhaComPedido(tr, item) {
+  tr.querySelector('.campo-pedido-erp').value = item.pedido || '';
+  tr.querySelector('.campo-oc-erp').value = item.oc || '';
+  tr.querySelector('.campo-produto-erp').value = item.codigo_produto || '';
+  tr.querySelector('.campo-descricao-erp').value = item.descricao || '';
+  tr.querySelector('.campo-cliente-erp').value = item.codigo_cliente || '';
+  tr.querySelector('.campo-isolacao-erp').value = item.isolacao || '';
+  tr.classList.add('linha-pedido-encontrado');
+  setTimeout(() => tr.classList.remove('linha-pedido-encontrado'), 1800);
+}
+
+document.querySelector('#tabelaDadosErp tbody').addEventListener('click', async e => {
+  const btn = e.target.closest('.btn-buscar-pedido');
+  if (!btn) return;
+  const tr = btn.closest('tr');
+  const pedido = tr.querySelector('.campo-pedido-erp').value.trim();
+  const produto = tr.querySelector('.campo-produto-erp').value.trim();
+  if (!pedido) return alert('Digite o número do pedido antes de buscar.');
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const params = new URLSearchParams({pedido, produto});
+    const resp = await fetch(`/api/pedidos/lookup?${params}`), dados = await resp.json();
+    if (!resp.ok) throw new Error(dados.erro || 'Pedido não encontrado.');
+    let item = dados.item;
+    if (!item) {
+      const opcoes = dados.itens.map((x, i) => `${i + 1} - item ${x.item || '—'} | ${x.codigo_produto} | ${x.descricao}`).join('\n');
+      const escolha = prompt(`O pedido possui mais de um item. Digite o número desejado:\n\n${opcoes}`);
+      const indice = Number(escolha) - 1;
+      if (!Number.isInteger(indice) || !dados.itens[indice]) return;
+      item = dados.itens[indice];
+    }
+    preencherLinhaComPedido(tr, item);
+  } catch (erro) { alert('Erro ao buscar pedido: ' + erro.message); }
+  finally { btn.disabled = false; btn.textContent = 'Buscar'; }
+});
 
 document.querySelector('#tabelaDadosErp tbody').addEventListener('click', async e => {
   const btn = e.target.closest('.btn-salvar-linha-erp');
@@ -1052,12 +1166,49 @@ document.getElementById('btnGerarPdfTestePainel').addEventListener('click', () =
 });
 
 // ==========================================
+// ANALISE DE MATERIAIS PRONTOS
+// ==========================================
+const numeroAnalise = valor => Number(valor || 0).toLocaleString('pt-BR', {maximumFractionDigits: 2});
+const pesoAnalise = valor => `${numeroAnalise(valor)} kg`;
+
+function barrasAnalise(itens, rotulo, valor) {
+  const maior = Math.max(...itens.map(valor), 1);
+  return itens.map(item => `<div class="barra-analise"><div><span>${cargaHtml(rotulo(item))}</span><strong>${numeroAnalise(valor(item))}</strong></div><i><b style="width:${Math.max(valor(item) / maior * 100, valor(item) ? 3 : 0)}%"></b></i></div>`).join('');
+}
+
+async function abrirAnaliseMateriais() {
+  mostrarView('analiseMateriais');
+  await carregarAnaliseMateriais();
+}
+
+async function carregarAnaliseMateriais() {
+  const erro = document.getElementById('analiseErro'); erro.hidden = true;
+  const params = new URLSearchParams({status: document.getElementById('analiseStatus').value, modulo: document.getElementById('analiseModulo').value});
+  const inicio = document.getElementById('analiseInicio').value, fim = document.getElementById('analiseFim').value;
+  if (inicio) params.set('inicio', inicio); if (fim) params.set('fim', fim);
+  try {
+    const resposta = await fetch(`/api/analise-materiais?${params}`), dados = await resposta.json();
+    if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível carregar a análise.');
+    document.getElementById('analisePallets').textContent = numeroAnalise(dados.resumo.pallets);
+    document.getElementById('analisePesoLiquido').textContent = pesoAnalise(dados.resumo.pesoLiquido);
+    document.getElementById('analisePesoBruto').textContent = pesoAnalise(dados.resumo.pesoBruto);
+    document.getElementById('analiseDiversidade').textContent = `${dados.resumo.clientes} / ${dados.resumo.produtos}`;
+    document.getElementById('analiseComposicao').innerHTML = barrasAnalise([{nome:'Fios', total:dados.porModulo.fios}, {nome:'Outros Materiais', total:dados.porModulo.painel}], x => x.nome, x => x.total);
+    document.getElementById('analiseIdade').innerHTML = barrasAnalise(dados.faixasIdade, x => x.faixa, x => x.pallets);
+    document.getElementById('analiseClientes').innerHTML = dados.porCliente.map(x => `<tr><td><strong>${cargaHtml(x.cliente)}</strong></td><td>${x.pallets}</td><td>${pesoAnalise(x.pesoLiquido)}</td><td>${pesoAnalise(x.pesoBruto)}</td></tr>`).join('') || '<tr><td colspan="4">Nenhum material no período.</td></tr>';
+    document.getElementById('analiseProdutos').innerHTML = dados.porProduto.map(x => `<tr><td><strong>${cargaHtml(x.codigo)}</strong></td><td>${cargaHtml(x.descricao || '—')}</td><td>${numeroAnalise(x.quantidade)}</td><td>${x.pallets}</td></tr>`).join('') || '<tr><td colspan="4">Nenhum produto no período.</td></tr>';
+  } catch (e) { erro.textContent = e.message; erro.hidden = false; }
+}
+document.getElementById('btnAtualizarAnalise').addEventListener('click', carregarAnaliseMateriais);
+
+// ==========================================
 // INICIALIZACAO
 // ==========================================
 function aplicarPermissoes() {
   const modulos = {
     'identificacao-pallets': 'identificacao_pallets',
     'relacao-carga': 'relacao_carga', romaneio: 'romaneio',
+    'analise-materiais': 'analise_materiais',
     'programacao-carregamento': 'programacao_carregamento',
   };
   for (const [modulo, permissao] of Object.entries(modulos)) {
@@ -1102,6 +1253,19 @@ document.getElementById('formLogin').addEventListener('submit', async e => {
 });
 document.getElementById('btnSair').addEventListener('click', async () => { await fetch('/api/auth/logout', {method:'POST'}); mostrarLogin(); });
 document.getElementById('btnAdmin').addEventListener('click', abrirAdministracao);
+const btnUsuarioMenu = document.getElementById('btnUsuarioMenu');
+const menuUsuario = document.getElementById('menuUsuario');
+btnUsuarioMenu.addEventListener('click', e => {
+  e.stopPropagation();
+  menuUsuario.hidden = !menuUsuario.hidden;
+  btnUsuarioMenu.setAttribute('aria-expanded', String(!menuUsuario.hidden));
+});
+document.addEventListener('click', e => {
+  if (!document.getElementById('barraSessao').contains(e.target)) {
+    menuUsuario.hidden = true;
+    btnUsuarioMenu.setAttribute('aria-expanded', 'false');
+  }
+});
 
 let usuariosAdmin = [];
 function abrirAdministracao() {
@@ -1119,7 +1283,7 @@ async function carregarUsuariosAdmin() {
   const resposta = await fetch('/api/admin/usuarios'), dados = await resposta.json();
   if (!resposta.ok) return alert(dados.erro || 'Não foi possível carregar os usuários.');
   usuariosAdmin = dados;
-  const rotulos = {identificacao_pallets:'Pallets', relacao_carga:'Relação', romaneio:'Romaneio', programacao_carregamento:'Programação'};
+  const rotulos = {identificacao_pallets:'Pallets', relacao_carga:'Relação', romaneio:'Romaneio', analise_materiais:'Análise', programacao_carregamento:'Programação'};
   document.querySelector('#tabelaUsuarios tbody').innerHTML = dados.map(u => `<tr><td><strong>${cargaHtml(u.login)}</strong></td><td>${cargaHtml(u.nome)}</td><td>${u.administrador ? '<span class="tag-admin">Administrador</span>' : 'Usuário'}</td><td>${u.ativo ? '<span class="tag-ativo">Ativo</span>' : '<span class="tag-inativo">Bloqueado</span>'}</td><td>${u.administrador ? 'Todos' : Object.entries(rotulos).filter(([k]) => u.permissoes[k]).map(([,v]) => v).join(', ') || 'Nenhum'}</td><td><button class="btn-clear" data-editar-usuario="${u.id}">Editar</button></td></tr>`).join('');
 }
 function limparFormUsuario() {
